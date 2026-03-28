@@ -2,19 +2,19 @@ package main
 
 import "fmt"
 
-type widget struct {
-	name string
+type Widget struct {
+	Name string
 }
 
-var globalCounter = 1
+var GlobalCounter = 1
 
-func rootErr() error {
-	if globalCounter > 0 {
-		switch globalCounter {
+func RootErr() error {
+	if GlobalCounter > 0 {
+		switch GlobalCounter {
 		case 1:
-			globalCounter++
+			GlobalCounter++
 		default:
-			globalCounter = 0
+			GlobalCounter = 0
 		}
 	}
 

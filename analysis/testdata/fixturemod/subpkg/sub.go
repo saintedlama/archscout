@@ -2,6 +2,6 @@ package subpkg
 
 import "fmt"
 
-func subErr() error {
+func SubErr() error {
 	return fmt.Errorf("sub error")
 }
