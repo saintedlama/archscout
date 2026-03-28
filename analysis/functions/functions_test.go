@@ -7,22 +7,22 @@ import (
 	"github.com/saintedlama/goarch/analysis/internaltest"
 )
 
-func TestFunctions_MatchBuildsFindingsFromPredicates(t *testing.T) {
+func TestFunctions_MatchBuildsRefsFromPredicates(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
-	findings := workspace.Functions.Match(functions.MatchFunc(func(fn functions.Item) bool {
+	refs := workspace.Functions.Match(functions.MatchFunc(func(fn functions.Item) bool {
 		return fn.Name == "RootErr"
 	}))
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 function finding, got %d", len(findings))
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 function ref, got %d", len(refs))
 	}
 
-	for _, f := range findings {
+	for _, f := range refs {
 		if f.PackageName == "" {
-			t.Fatalf("finding package should not be empty")
+			t.Fatalf("ref package should not be empty")
 		}
 		if f.Line <= 0 {
-			t.Fatalf("finding line should be > 0")
+			t.Fatalf("ref line should be > 0")
 		}
 	}
 }

@@ -7,22 +7,22 @@ import (
 	"github.com/saintedlama/goarch/analysis/packages"
 )
 
-func TestPackages_MatchBuildsFindingsFromPredicates(t *testing.T) {
+func TestPackages_MatchBuildsRefsFromPredicates(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
-	findings := workspace.Packages.Match(packages.MatchFunc(func(pkg packages.Item) bool {
+	refs := workspace.Packages.Match(packages.MatchFunc(func(pkg packages.Item) bool {
 		return pkg.Name == "main"
 	}))
-	if len(findings) == 0 {
-		t.Fatalf("expected package findings")
+	if len(refs) == 0 {
+		t.Fatalf("expected package refs")
 	}
 
-	for _, f := range findings {
+	for _, f := range refs {
 		if f.PackageName == "" {
-			t.Fatalf("finding package should not be empty")
+			t.Fatalf("ref package should not be empty")
 		}
 		if f.Line <= 0 {
-			t.Fatalf("finding line should be > 0")
+			t.Fatalf("ref line should be > 0")
 		}
 	}
 }

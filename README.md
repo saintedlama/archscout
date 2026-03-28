@@ -19,7 +19,7 @@ After loading a module, `goarch` builds top-level collections for:
 - Function calls
 - Conditions (`if`, `switch`, `select`, `case`, etc.)
 
-Each collection supports a fluent `Match(...)` API that returns findings with source references.
+Each collection supports a fluent `Match(...)` API that returns code refs with source references.
 
 ## Install
 
@@ -64,7 +64,7 @@ func TestNoFmtErrorfCalls(t *testing.T) {
     t.Fatalf("LoadWorkspace failed: %v", err)
   }
 
-  findings := workspace.MatchFunctionCalls(
+  refs := workspace.MatchFunctionCalls(
     goarch.FunctionCallMatchFunc(func(c goarch.FunctionCall) bool {
       if c.Callee == "fmt.Errorf" {
         return true
@@ -73,11 +73,11 @@ func TestNoFmtErrorfCalls(t *testing.T) {
     }),
   )
 
-  if len(findings) == 0 {
+  if len(refs) == 0 {
     return
   }
 
-  for _, f := range findings {
+  for _, f := range refs {
     t.Errorf("%s:%d:%d package=%s", f.Filename, f.Line, f.Column, f.PackageName)
   }
 }

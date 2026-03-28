@@ -7,22 +7,22 @@ import (
 	"github.com/saintedlama/goarch/analysis/types"
 )
 
-func TestTypes_MatchBuildsFindingsFromPredicates(t *testing.T) {
+func TestTypes_MatchBuildsRefsFromPredicates(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
-	findings := workspace.Types.Match(types.MatchFunc(func(typ types.Item) bool {
+	refs := workspace.Types.Match(types.MatchFunc(func(typ types.Item) bool {
 		return typ.Name == "Widget"
 	}))
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 type finding, got %d", len(findings))
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 type ref, got %d", len(refs))
 	}
 
-	for _, f := range findings {
+	for _, f := range refs {
 		if f.PackageName == "" {
-			t.Fatalf("finding package should not be empty")
+			t.Fatalf("ref package should not be empty")
 		}
 		if f.Line <= 0 {
-			t.Fatalf("finding line should be > 0")
+			t.Fatalf("ref line should be > 0")
 		}
 	}
 }

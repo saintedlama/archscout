@@ -51,7 +51,7 @@ func (c Collection) Len() int {
 	return len(c.items)
 }
 
-// Match applies matcher to all package entries and converts matches into findings.
+// Match applies matcher to all package entries and converts matches into code refs.
 func (c Collection) Match(matcher Matcher) []common.Ref {
 	if matcher == nil {
 		return nil

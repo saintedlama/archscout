@@ -11,18 +11,18 @@ import (
 func TestFunctionCalls_FindsExpectedFmtErrorfCalls(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
-	findings := workspace.FunctionCalls.Match(functioncalls.MatchFunc(func(call functioncalls.Item) bool {
+	refs := workspace.FunctionCalls.Match(functioncalls.MatchFunc(func(call functioncalls.Item) bool {
 		if call.Callee != "fmt.Errorf" {
 			return false
 		}
 		return true
 	}))
-	if len(findings) != 2 {
-		t.Fatalf("expected 2 findings, got %d", len(findings))
+	if len(refs) != 2 {
+		t.Fatalf("expected 2 refs, got %d", len(refs))
 	}
 
 	var sawRoot, sawSub bool
-	for _, f := range findings {
+	for _, f := range refs {
 		if strings.HasSuffix(strings.ReplaceAll(f.Filename, "\\", "/"), "/main.go") {
 			sawRoot = true
 		}
