@@ -20,6 +20,7 @@ After loading a module, `goarch` builds top-level collections for:
 - Function calls
 
 Each collection supports a fluent `Match(...)` API that returns code refs with source references.
+Refs also carry a kind-specific match label and can be rendered with `FormatRef` or `FormatRefs`.
 
 ## Install
 
@@ -78,9 +79,7 @@ func TestNoFmtErrorfCalls(t *testing.T) {
     return
   }
 
-  for _, f := range refs {
-    t.Errorf("%s:%d:%d package=%s", f.Filename, f.Line, f.Column, f.PackageName)
-  }
+  t.Fatalf("fmt.Errorf is forbidden in %s", refs.Format(goarch.WithRefPackage()))
 }
 ```
 

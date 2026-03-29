@@ -1,9 +1,11 @@
 package goarch
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"go/ast"
+	"go/printer"
 	"go/token"
 	"path/filepath"
 	"sync"
@@ -15,6 +17,7 @@ import (
 	"github.com/saintedlama/goarch/packages"
 	"github.com/saintedlama/goarch/types"
 	"github.com/saintedlama/goarch/variables"
+	workspacebuilder "github.com/saintedlama/goarch/workspace/builder"
 
 	toolspackages "golang.org/x/tools/go/packages"
 )
@@ -31,6 +34,18 @@ type Workspace struct {
 
 // Top-level aliases for convenient consumption from goarch package.
 type Ref = common.Ref
+type Refs = common.Refs
+type RefKind = common.RefKind
+type RefFormatOption = common.RefFormatOption
+
+const (
+	RefKindPackage      = common.RefKindPackage
+	RefKindFile         = common.RefKindFile
+	RefKindType         = common.RefKindType
+	RefKindFunction     = common.RefKindFunction
+	RefKindVariable     = common.RefKindVariable
+	RefKindFunctionCall = common.RefKindFunctionCall
+)
 
 type Package = packages.Item
 type PackageFile = packages.File
@@ -47,6 +62,56 @@ type TypeMatchFunc = types.MatchFunc
 type FunctionMatchFunc = functions.MatchFunc
 type VariableMatchFunc = variables.MatchFunc
 type FunctionCallMatchFunc = functioncalls.MatchFunc
+
+// DefaultRefFormatOptions returns the default ref formatting configuration.
+func DefaultRefFormatOptions() common.RefFormatOptions {
+	return common.DefaultRefFormatOptions()
+}
+
+// WithRefPackage includes package information in formatted refs.
+func WithRefPackage() RefFormatOption {
+	return common.WithRefPackage()
+}
+
+// WithRefKind includes the ref kind in formatted refs.
+func WithRefKind() RefFormatOption {
+	return common.WithRefKind()
+}
+
+// WithoutRefFile omits the filename from formatted refs.
+func WithoutRefFile() RefFormatOption {
+	return common.WithoutRefFile()
+}
+
+// WithoutRefLine omits the line number from formatted refs.
+func WithoutRefLine() RefFormatOption {
+	return common.WithoutRefLine()
+}
+
+// WithoutRefColumn omits the column number from formatted refs.
+func WithoutRefColumn() RefFormatOption {
+	return common.WithoutRefColumn()
+}
+
+// WithoutRefMatch omits the matched-node representation from formatted refs.
+func WithoutRefMatch() RefFormatOption {
+	return common.WithoutRefMatch()
+}
+
+// WithRefSeparator configures the separator used by FormatRefs.
+func WithRefSeparator(separator string) RefFormatOption {
+	return common.WithRefSeparator(separator)
+}
+
+// FormatRef renders a single ref using the provided options.
+func FormatRef(ref Ref, opts ...RefFormatOption) string {
+	return common.FormatRef(ref, opts...)
+}
+
+// FormatRefs renders a slice of refs using the provided options.
+func FormatRefs(refs Refs, opts ...RefFormatOption) string {
+	return common.FormatRefs(refs, opts...)
+}
 
 type loadWorkspaceOptions struct {
 	reporter      func(string)
@@ -156,7 +221,7 @@ func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Works
 	}
 	report(fmt.Sprintf("Loaded %d package(s)", len(pkgs)))
 
-	workspace := &Workspace{}
+	workspace := workspacebuilder.New()
 	for _, pkg := range pkgs {
 		report(fmt.Sprintf("Analyzing %s...", pkg.ID))
 
@@ -184,23 +249,31 @@ func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Works
 				Node:     file,
 			})
 
-			workspace.Files.Add(files.Item{
-				Ref:      newRef(p, filename, file),
+			workspace.AddFile(files.Item{
+				Ref:      newRef(p, filename, file, common.RefKindFile, fileMatchText(file)),
 				Filename: filename,
 				Node:     file,
 			})
 
-			indexFileEntries(&workspace.Types, &workspace.Functions, &workspace.Variables, &workspace.FunctionCalls, p, filename, file)
+			indexFileEntries(workspace, p, filename, file)
 		}
 
-		workspace.Packages.Add(p)
+		workspace.AddPackage(p)
 	}
 
-	return workspace, nil
+	snapshot := workspace.Build()
+	return &Workspace{
+		Packages:      snapshot.Packages,
+		Files:         snapshot.Files,
+		Types:         snapshot.Types,
+		Functions:     snapshot.Functions,
+		Variables:     snapshot.Variables,
+		FunctionCalls: snapshot.FunctionCalls,
+	}, nil
 }
 
 // MatchPackages runs a matcher over all packages and returns generated code refs.
-func (workspace *Workspace) MatchPackages(matcher PackageMatchFunc) []Ref {
+func (workspace *Workspace) MatchPackages(matcher PackageMatchFunc) Refs {
 	if workspace == nil || matcher == nil {
 		return nil
 	}
@@ -208,7 +281,7 @@ func (workspace *Workspace) MatchPackages(matcher PackageMatchFunc) []Ref {
 }
 
 // MatchFiles runs a matcher over all file entries and returns generated code refs.
-func (workspace *Workspace) MatchFiles(matcher FileMatchFunc) []Ref {
+func (workspace *Workspace) MatchFiles(matcher FileMatchFunc) Refs {
 	if workspace == nil || matcher == nil {
 		return nil
 	}
@@ -216,7 +289,7 @@ func (workspace *Workspace) MatchFiles(matcher FileMatchFunc) []Ref {
 }
 
 // MatchTypes runs a matcher over all type entries and returns generated code refs.
-func (workspace *Workspace) MatchTypes(matcher TypeMatchFunc) []Ref {
+func (workspace *Workspace) MatchTypes(matcher TypeMatchFunc) Refs {
 	if workspace == nil || matcher == nil {
 		return nil
 	}
@@ -224,7 +297,7 @@ func (workspace *Workspace) MatchTypes(matcher TypeMatchFunc) []Ref {
 }
 
 // MatchFunctions runs a matcher over all function entries and returns generated code refs.
-func (workspace *Workspace) MatchFunctions(matcher FunctionMatchFunc) []Ref {
+func (workspace *Workspace) MatchFunctions(matcher FunctionMatchFunc) Refs {
 	if workspace == nil || matcher == nil {
 		return nil
 	}
@@ -232,7 +305,7 @@ func (workspace *Workspace) MatchFunctions(matcher FunctionMatchFunc) []Ref {
 }
 
 // MatchVariables runs a matcher over all variable entries and returns generated code refs.
-func (workspace *Workspace) MatchVariables(matcher VariableMatchFunc) []Ref {
+func (workspace *Workspace) MatchVariables(matcher VariableMatchFunc) Refs {
 	if workspace == nil || matcher == nil {
 		return nil
 	}
@@ -240,7 +313,7 @@ func (workspace *Workspace) MatchVariables(matcher VariableMatchFunc) []Ref {
 }
 
 // MatchFunctionCalls runs a matcher over all call entries and returns generated code refs.
-func (workspace *Workspace) MatchFunctionCalls(matcher FunctionCallMatchFunc) []Ref {
+func (workspace *Workspace) MatchFunctionCalls(matcher FunctionCallMatchFunc) Refs {
 	if workspace == nil || matcher == nil {
 		return nil
 	}
@@ -248,10 +321,7 @@ func (workspace *Workspace) MatchFunctionCalls(matcher FunctionCallMatchFunc) []
 }
 
 func indexFileEntries(
-	typeEntries *types.Collection,
-	functionEntries *functions.Collection,
-	variableEntries *variables.Collection,
-	callEntries *functioncalls.Collection,
+	workspace *workspacebuilder.Builder,
 	pkg packages.Item,
 	filename string,
 	file *ast.File,
@@ -263,8 +333,8 @@ func indexFileEntries(
 	ast.Inspect(file, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.TypeSpec:
-			typeEntries.Add(types.Item{
-				Ref:  newRef(pkg, filename, node),
+			workspace.AddType(types.Item{
+				Ref:  newRef(pkg, filename, node, common.RefKindType, typeMatchText(node.Name.Name, exprKind(node.Type))),
 				Name: node.Name.Name,
 				Kind: exprKind(node.Type),
 				Node: node,
@@ -275,8 +345,8 @@ func indexFileEntries(
 			if node.Recv != nil && len(node.Recv.List) > 0 {
 				receiver = exprText(node.Recv.List[0].Type)
 			}
-			functionEntries.Add(functions.Item{
-				Ref:      newRef(pkg, filename, node),
+			workspace.AddFunction(functions.Item{
+				Ref:      newRef(pkg, filename, node, common.RefKindFunction, functionMatchText(node.Name.Name, receiver)),
 				Name:     node.Name.Name,
 				Receiver: receiver,
 				Node:     node,
@@ -288,8 +358,8 @@ func indexFileEntries(
 				kind = "const"
 			}
 			for _, name := range node.Names {
-				variableEntries.Add(variables.Item{
-					Ref:  newRef(pkg, filename, name),
+				workspace.AddVariable(variables.Item{
+					Ref:  newRef(pkg, filename, name, common.RefKindVariable, variableMatchText(name.Name, kind)),
 					Name: name.Name,
 					Kind: kind,
 					Node: name,
@@ -297,8 +367,8 @@ func indexFileEntries(
 			}
 
 		case *ast.CallExpr:
-			callEntries.Add(functioncalls.Item{
-				Ref:    newRef(pkg, filename, node),
+			workspace.AddFunctionCall(functioncalls.Item{
+				Ref:    newRef(pkg, filename, node, common.RefKindFunctionCall, callMatchText(pkg.FileSet, node)),
 				Callee: calleeName(node.Fun),
 				Node:   node,
 			})
@@ -308,7 +378,7 @@ func indexFileEntries(
 	})
 }
 
-func newRef(pkg packages.Item, fallbackFilename string, n ast.Node) common.Ref {
+func newRef(pkg packages.Item, fallbackFilename string, n ast.Node, kind common.RefKind, match string) common.Ref {
 	pos := pkg.FileSet.PositionFor(n.Pos(), true)
 	filename := fallbackFilename
 	if pos.Filename != "" {
@@ -321,7 +391,63 @@ func newRef(pkg packages.Item, fallbackFilename string, n ast.Node) common.Ref {
 		Filename:    filename,
 		Line:        pos.Line,
 		Column:      pos.Column,
+		Kind:        kind,
+		Match:       match,
 	}
+}
+
+func fileMatchText(file *ast.File) string {
+	if file != nil && file.Name != nil && file.Name.Name != "" {
+		return "file package " + file.Name.Name
+	}
+	return "file"
+}
+
+func typeMatchText(name, kind string) string {
+	if name == "" {
+		return "type"
+	}
+	if kind != "" && kind != "type" {
+		return "type " + name + " " + kind
+	}
+	return "type " + name
+}
+
+func functionMatchText(name, receiver string) string {
+	if receiver != "" {
+		return "func (" + receiver + ") " + name
+	}
+	if name == "" {
+		return "func"
+	}
+	return "func " + name
+}
+
+func variableMatchText(name, kind string) string {
+	if kind == "" {
+		kind = "var"
+	}
+	if name == "" {
+		return kind
+	}
+	return kind + " " + name
+}
+
+func callMatchText(fileSet *token.FileSet, node *ast.CallExpr) string {
+	if node == nil {
+		return "call"
+	}
+
+	var buf bytes.Buffer
+	if fileSet != nil && printer.Fprint(&buf, fileSet, node) == nil {
+		return buf.String()
+	}
+
+	callee := calleeName(node.Fun)
+	if callee == "" {
+		return "call"
+	}
+	return callee + "(...)"
 }
 
 func calleeName(expr ast.Expr) string {

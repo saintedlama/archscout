@@ -2,6 +2,7 @@ package goarch_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 )
 
 // collectionPackages are the sub-packages that each define the
-// Item / Collection / MatchFunc triad and must follow the collection pattern.
+// Item / Collection / MatchFunc triad and must follow the read-only collection pattern.
 var collectionPackages = []string{
 	"github.com/saintedlama/goarch/files",
 	"github.com/saintedlama/goarch/functions",
@@ -61,11 +62,11 @@ func TestArch_CollectionPackagesDefineRequiredTypes(t *testing.T) {
 }
 
 // TestArch_CollectionPackagesDefineRequiredMethods verifies that every collection
-// sub-package has Add, All, Len, and Match methods on its Collection type.
+// sub-package has All, Len, and Match methods on its Collection type.
 func TestArch_CollectionPackagesDefineRequiredMethods(t *testing.T) {
 	ws := loadWorkspace(t)
 
-	required := []string{"Add", "All", "Len", "Match"}
+	required := []string{"All", "Len", "Match"}
 
 	for _, pkg := range collectionPackages {
 		for _, method := range required {
@@ -86,22 +87,23 @@ func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
 
 	forbidden := []string{"panic", "os.Exit"}
 
-	for _, callee := range forbidden {
-		refs := ws.MatchFunctionCalls(func(fc goarch.FunctionCall) bool {
-			if fc.Callee != callee {
-				return false
-			}
-			if strings.Contains(fc.Ref.PackageID, "/internal") {
-				return false
-			}
-			if strings.HasSuffix(fc.Ref.Filename, "_test.go") {
-				return false
-			}
-			return true
-		})
-		for _, ref := range refs {
-			assert.Fail(t, "forbidden call in library code",
-				"package %q calls %s at %s:%d", ref.PackageID, callee, ref.Filename, ref.Line)
+	refs := ws.MatchFunctionCalls(func(fc goarch.FunctionCall) bool {
+		isForbidden := slices.Contains(forbidden, fc.Callee)
+
+		if !isForbidden {
+			return false
 		}
-	}
+
+		if strings.Contains(fc.Ref.PackageID, "/internal") {
+			return false
+		}
+
+		if strings.HasSuffix(fc.Ref.Filename, "_test.go") {
+			return false
+		}
+
+		return true
+	})
+
+	assert.Empty(t, refs, "panic and os.Exit forbidden in library code violated in %s", refs.Format())
 }

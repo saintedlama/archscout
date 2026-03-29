@@ -21,9 +21,14 @@ type Collection struct {
 	items []Item
 }
 
-// All returns all file entries.
+// NewCollection constructs an immutable file collection snapshot.
+func NewCollection(items []Item) Collection {
+	return Collection{items: append([]Item(nil), items...)}
+}
+
+// All returns a snapshot of all file entries.
 func (c Collection) All() []Item {
-	return c.items
+	return append([]Item(nil), c.items...)
 }
 
 // Len returns number of file entries.
@@ -32,12 +37,12 @@ func (c Collection) Len() int {
 }
 
 // Match applies matcher to all file entries and converts matches into code refs.
-func (c Collection) Match(matcher MatchFunc) []common.Ref {
+func (c Collection) Match(matcher MatchFunc) common.Refs {
 	if matcher == nil {
 		return nil
 	}
 
-	var refs []common.Ref
+	var refs common.Refs
 	for _, item := range c.items {
 		if !matcher(item) {
 			continue
@@ -46,9 +51,4 @@ func (c Collection) Match(matcher MatchFunc) []common.Ref {
 	}
 
 	return refs
-}
-
-// Add appends an entry to the collection.
-func (c *Collection) Add(item Item) {
-	c.items = append(c.items, item)
 }

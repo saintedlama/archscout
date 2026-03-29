@@ -32,9 +32,14 @@ type Collection struct {
 	items []Item
 }
 
-// All returns all package entries.
+// NewCollection constructs an immutable package collection snapshot.
+func NewCollection(items []Item) Collection {
+	return Collection{items: append([]Item(nil), items...)}
+}
+
+// All returns a snapshot of all package entries.
 func (c Collection) All() []Item {
-	return c.items
+	return append([]Item(nil), c.items...)
 }
 
 // Len returns number of package entries.
@@ -43,12 +48,12 @@ func (c Collection) Len() int {
 }
 
 // Match applies matcher to all package entries and converts matches into code refs.
-func (c Collection) Match(matcher MatchFunc) []common.Ref {
+func (c Collection) Match(matcher MatchFunc) common.Refs {
 	if matcher == nil {
 		return nil
 	}
 
-	var refs []common.Ref
+	var refs common.Refs
 	for _, item := range c.items {
 		if !matcher(item) {
 			continue
@@ -59,13 +64,13 @@ func (c Collection) Match(matcher MatchFunc) []common.Ref {
 	return refs
 }
 
-// Add appends an entry to the collection.
-func (c *Collection) Add(item Item) {
-	c.items = append(c.items, item)
-}
-
 func packageRef(item Item) common.Ref {
-	ref := common.Ref{PackageID: item.ID, PackageName: item.Name}
+	ref := common.Ref{
+		PackageID:   item.ID,
+		PackageName: item.Name,
+		Kind:        common.RefKindPackage,
+		Match:       "package " + item.Name,
+	}
 
 	if len(item.Files) > 0 {
 		ref.Filename = item.Files[0].Filename
