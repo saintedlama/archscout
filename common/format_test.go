@@ -63,6 +63,24 @@ func TestRefs_EmptyFormatAndJoinReturnEmptyString(t *testing.T) {
 	assert.Equal(t, "", refs.String())
 }
 
+func TestFormatRefs_DefaultSeparatorIsNewline(t *testing.T) {
+	formatted := common.Refs{
+		{Filename: "a.go", Line: 1, Column: 1, Match: "func A"},
+		{Filename: "b.go", Line: 2, Column: 3, Match: "func B"},
+	}.Format()
+
+	assert.Equal(t, "* a.go:1:1 func A\n* b.go:2:3 func B", formatted)
+}
+
+func TestFormatRefs_WithoutSeparatorConcatenatesOutput(t *testing.T) {
+	formatted := common.Refs{
+		{Filename: "a.go", Line: 1, Column: 1, Match: "func A"},
+		{Filename: "b.go", Line: 2, Column: 3, Match: "func B"},
+	}.Format(common.WithoutSeparator())
+
+	assert.Equal(t, "a.go:1:1 func Ab.go:2:3 func B", formatted)
+}
+
 func TestFormatRef_UsesKindWhenMatchIsOmitted(t *testing.T) {
 	formatted := common.FormatRef(
 		common.Ref{Kind: common.RefKindVariable},
@@ -89,4 +107,15 @@ func TestRefs_StringMatchesDefaultFormat(t *testing.T) {
 	}
 
 	assert.Equal(t, refs.Format(), refs.String())
+}
+
+func TestFormatRefs_SingleRefDoesNotAddListMarker(t *testing.T) {
+	formatted := common.Refs{{
+		Filename: "a.go",
+		Line:     1,
+		Column:   1,
+		Match:    "func A",
+	}}.Format()
+
+	assert.Equal(t, "a.go:1:1 func A", formatted)
 }

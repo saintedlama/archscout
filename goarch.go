@@ -103,6 +103,11 @@ func WithRefSeparator(separator string) RefFormatOption {
 	return common.WithRefSeparator(separator)
 }
 
+// WithoutSeparator concatenates formatted refs without any separator.
+func WithoutSeparator() RefFormatOption {
+	return common.WithoutSeparator()
+}
+
 // FormatRef renders a single ref using the provided options.
 func FormatRef(ref Ref, opts ...RefFormatOption) string {
 	return common.FormatRef(ref, opts...)

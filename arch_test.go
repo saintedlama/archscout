@@ -105,5 +105,5 @@ func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
 		return true
 	})
 
-	assert.Empty(t, refs, "panic and os.Exit forbidden in library code violated in %s", refs.Format())
+	assert.Empty(t, refs, "panic and os.Exit forbidden in library code violated:\n%s", refs.Format())
 }

@@ -54,7 +54,7 @@ func DefaultRefFormatOptions() RefFormatOptions {
 		IncludeLine:    true,
 		IncludeColumn:  true,
 		IncludeMatch:   true,
-		EntrySeparator: ", ",
+		EntrySeparator: "\n",
 	}
 }
 
@@ -104,6 +104,13 @@ func WithoutRefMatch() RefFormatOption {
 func WithRefSeparator(separator string) RefFormatOption {
 	return func(opts *RefFormatOptions) {
 		opts.EntrySeparator = separator
+	}
+}
+
+// WithoutSeparator concatenates formatted refs without any separator.
+func WithoutSeparator() RefFormatOption {
+	return func(opts *RefFormatOptions) {
+		opts.EntrySeparator = ""
 	}
 }
 
@@ -165,6 +172,12 @@ func FormatRefs(refs Refs, opts ...RefFormatOption) string {
 	formatted := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		formatted = append(formatted, FormatRef(ref, opts...))
+	}
+
+	if len(refs) > 1 && config.EntrySeparator == "\n" {
+		for index, ref := range formatted {
+			formatted[index] = "* " + ref
+		}
 	}
 
 	return strings.Join(formatted, config.EntrySeparator)
