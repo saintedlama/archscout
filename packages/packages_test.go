@@ -5,6 +5,8 @@ import (
 
 	"github.com/saintedlama/goarch/internaltest"
 	"github.com/saintedlama/goarch/packages"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPackages_MatchBuildsRefsFromPredicates(t *testing.T) {
@@ -13,16 +15,10 @@ func TestPackages_MatchBuildsRefsFromPredicates(t *testing.T) {
 	refs := workspace.Packages.Match(func(pkg packages.Item) bool {
 		return pkg.Name == "main"
 	})
-	if len(refs) == 0 {
-		t.Fatalf("expected package refs")
-	}
+	require.NotEmpty(t, refs, "expected at least one package ref")
 
 	for _, f := range refs {
-		if f.PackageName == "" {
-			t.Fatalf("ref package should not be empty")
-		}
-		if f.Line <= 0 {
-			t.Fatalf("ref line should be > 0")
-		}
+		assert.NotEmpty(t, f.PackageName, "ref package should not be empty")
+		assert.Greater(t, f.Line, 0, "ref line should be > 0")
 	}
 }

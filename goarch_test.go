@@ -4,29 +4,21 @@ import (
 	"testing"
 
 	"github.com/saintedlama/goarch/internaltest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadWorkspace_LoadsPackagesAndFiles(t *testing.T) {
 	program := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
-	if program.Packages.Len() < 2 {
-		t.Fatalf("expected at least 2 packages, got %d", program.Packages.Len())
-	}
+	require.GreaterOrEqual(t, program.Packages.Len(), 2, "expected at least 2 packages")
 
 	for _, pkg := range program.Packages.All() {
-		if pkg.ID == "" {
-			t.Fatalf("package ID should not be empty")
-		}
-		if pkg.FileSet == nil {
-			t.Fatalf("package %q has nil file set", pkg.ID)
-		}
-		if len(pkg.Files) == 0 {
-			t.Fatalf("package %q should contain at least one file", pkg.ID)
-		}
+		assert.NotEmpty(t, pkg.ID, "package ID should not be empty")
+		assert.NotNil(t, pkg.FileSet, "package %q has nil file set", pkg.ID)
+		assert.NotEmpty(t, pkg.Files, "package %q should contain at least one file", pkg.ID)
 		for _, file := range pkg.Files {
-			if file.Node == nil {
-				t.Fatalf("package %q has file with nil AST node", pkg.ID)
-			}
+			assert.NotNil(t, file.Node, "package %q has file with nil AST node", pkg.ID)
 		}
 	}
 }
@@ -34,16 +26,8 @@ func TestLoadWorkspace_LoadsPackagesAndFiles(t *testing.T) {
 func TestLoadWorkspace_BuildsTopLevelCollections(t *testing.T) {
 	program := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
-	if program.Types.Len() == 0 {
-		t.Fatalf("expected at least one type entry")
-	}
-	if program.Functions.Len() == 0 {
-		t.Fatalf("expected at least one function entry")
-	}
-	if program.Variables.Len() == 0 {
-		t.Fatalf("expected at least one variable entry")
-	}
-	if program.FunctionCalls.Len() == 0 {
-		t.Fatalf("expected at least one function call entry")
-	}
+	assert.Greater(t, program.Types.Len(), 0, "expected at least one type entry")
+	assert.Greater(t, program.Functions.Len(), 0, "expected at least one function entry")
+	assert.Greater(t, program.Variables.Len(), 0, "expected at least one variable entry")
+	assert.Greater(t, program.FunctionCalls.Len(), 0, "expected at least one function call entry")
 }

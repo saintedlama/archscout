@@ -5,6 +5,8 @@ import (
 
 	"github.com/saintedlama/goarch/internaltest"
 	"github.com/saintedlama/goarch/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTypes_MatchBuildsRefsFromPredicates(t *testing.T) {
@@ -13,16 +15,10 @@ func TestTypes_MatchBuildsRefsFromPredicates(t *testing.T) {
 	refs := workspace.Types.Match(func(typ types.Item) bool {
 		return typ.Name == "Widget"
 	})
-	if len(refs) != 1 {
-		t.Fatalf("expected 1 type ref, got %d", len(refs))
-	}
+	require.Len(t, refs, 1, "expected 1 type ref")
 
 	for _, f := range refs {
-		if f.PackageName == "" {
-			t.Fatalf("ref package should not be empty")
-		}
-		if f.Line <= 0 {
-			t.Fatalf("ref line should be > 0")
-		}
+		assert.NotEmpty(t, f.PackageName, "ref package should not be empty")
+		assert.Greater(t, f.Line, 0, "ref line should be > 0")
 	}
 }

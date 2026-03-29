@@ -6,35 +6,29 @@ import (
 
 	"github.com/saintedlama/goarch/functioncalls"
 	"github.com/saintedlama/goarch/internaltest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFunctionCalls_FindsExpectedFmtErrorfCalls(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
 	refs := workspace.FunctionCalls.Match(func(call functioncalls.Item) bool {
-		if call.Callee != "fmt.Errorf" {
-			return false
-		}
-		return true
+		return call.Callee == "fmt.Errorf"
 	})
-	if len(refs) != 2 {
-		t.Fatalf("expected 2 refs, got %d", len(refs))
-	}
+	require.Len(t, refs, 2, "expected 2 fmt.Errorf refs")
 
 	var sawRoot, sawSub bool
 	for _, f := range refs {
-		if strings.HasSuffix(strings.ReplaceAll(f.Filename, "\\", "/"), "/main.go") {
+		normalized := strings.ReplaceAll(f.Filename, "\\", "/")
+		if strings.HasSuffix(normalized, "/main.go") {
 			sawRoot = true
 		}
-		if strings.HasSuffix(strings.ReplaceAll(f.Filename, "\\", "/"), "/subpkg/sub.go") {
+		if strings.HasSuffix(normalized, "/subpkg/sub.go") {
 			sawSub = true
 		}
 	}
 
-	if !sawRoot {
-		t.Fatalf("did not find fmt.Errorf in fixture main.go")
-	}
-	if !sawSub {
-		t.Fatalf("did not find fmt.Errorf in fixture subpkg/sub.go")
-	}
+	assert.True(t, sawRoot, "did not find fmt.Errorf in fixture main.go")
+	assert.True(t, sawSub, "did not find fmt.Errorf in fixture subpkg/sub.go")
 }
