@@ -31,6 +31,7 @@ go get github.com/saintedlama/goarch
 
 - `LoadWorkspace(ctx, dir, opts...) (*Workspace, error)`
 - `WithReporter(func(string)) LoadWorkspaceOption`
+- `WithInMemoryCache() LoadWorkspaceOption`
 - Workspace matcher methods:
   - `workspace.MatchPackages(...)`
   - `workspace.MatchFiles(...)`
@@ -110,4 +111,5 @@ CI runs these checks on pushes and pull requests.
 
 - `LoadWorkspace` expects a Go module directory (with `go.mod`).
 - Progress reporting is optional via `goarch.WithReporter(func(string) { ... })`.
+- In-memory caching is optional via `goarch.WithInMemoryCache()` and reuses an already loaded workspace by path.
 - Package loading is based on `golang.org/x/tools/go/packages` for more precise module-aware parsing than ad-hoc file parsing.

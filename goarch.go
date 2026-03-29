@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"path/filepath"
+	"sync"
 
 	"github.com/saintedlama/goarch/common"
 	"github.com/saintedlama/goarch/files"
@@ -47,7 +49,22 @@ type VariableMatchFunc = variables.MatchFunc
 type FunctionCallMatchFunc = functioncalls.MatchFunc
 
 type loadWorkspaceOptions struct {
-	reporter func(string)
+	reporter      func(string)
+	inMemoryCache bool
+}
+
+type workspaceCacheState struct {
+	mu      sync.Mutex
+	entries map[string]*workspaceCacheEntry
+}
+
+type workspaceCacheEntry struct {
+	workspace *Workspace
+	ready     chan struct{}
+}
+
+var workspaceCache = workspaceCacheState{
+	entries: make(map[string]*workspaceCacheEntry),
 }
 
 // LoadWorkspaceOption configures workspace loading behavior.
@@ -60,15 +77,16 @@ func WithReporter(reporter func(string)) LoadWorkspaceOption {
 	}
 }
 
+// WithInMemoryCache enables process-local workspace caching.
+// When enabled, repeated loads of the same path return the same workspace instance.
+func WithInMemoryCache() LoadWorkspaceOption {
+	return func(opts *loadWorkspaceOptions) {
+		opts.inMemoryCache = true
+	}
+}
+
 // LoadWorkspace loads all packages in dir and returns a workspace.
 func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption) (*Workspace, error) {
-	cfg := &toolspackages.Config{
-		Dir: dir,
-		Mode: toolspackages.NeedName | toolspackages.NeedFiles | toolspackages.NeedSyntax |
-			toolspackages.NeedCompiledGoFiles | toolspackages.NeedImports,
-		Context: ctx,
-	}
-
 	options := &loadWorkspaceOptions{}
 	for _, opt := range opts {
 		if opt != nil {
@@ -82,7 +100,53 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 		}
 	}
 
-	report("Loading packages (./...)...")
+	if options.inMemoryCache {
+		cacheKey, err := filepath.Abs(dir)
+		if err != nil {
+			return nil, fmt.Errorf("resolving cache key for %q: %w", dir, err)
+		}
+
+		workspaceCache.mu.Lock()
+		if existing, ok := workspaceCache.entries[cacheKey]; ok {
+			workspaceCache.mu.Unlock()
+			<-existing.ready
+			report(fmt.Sprintf("Using cached workspace for %s", cacheKey))
+			return existing.workspace, nil
+		}
+
+		entry := &workspaceCacheEntry{ready: make(chan struct{})}
+		workspaceCache.entries[cacheKey] = entry
+		workspaceCache.mu.Unlock()
+
+		workspace, err := loadWorkspace(ctx, dir, report)
+		if err != nil {
+			workspaceCache.mu.Lock()
+			delete(workspaceCache.entries, cacheKey)
+			close(entry.ready)
+			workspaceCache.mu.Unlock()
+			return nil, err
+		}
+
+		workspaceCache.mu.Lock()
+		entry.workspace = workspace
+		close(entry.ready)
+		workspaceCache.mu.Unlock()
+
+		return workspace, nil
+	}
+
+	return loadWorkspace(ctx, dir, report)
+}
+
+func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Workspace, error) {
+	cfg := &toolspackages.Config{
+		Dir: dir,
+		Mode: toolspackages.NeedName | toolspackages.NeedFiles | toolspackages.NeedSyntax |
+			toolspackages.NeedCompiledGoFiles | toolspackages.NeedImports,
+		Context: ctx,
+	}
+
+	report("Loading packages (./...)")
 	pkgs, err := toolspackages.Load(cfg, "./...")
 	if err != nil {
 		return nil, fmt.Errorf("loading packages: %w", err)
@@ -238,7 +302,6 @@ func indexFileEntries(
 				Callee: calleeName(node.Fun),
 				Node:   node,
 			})
-
 		}
 
 		return true

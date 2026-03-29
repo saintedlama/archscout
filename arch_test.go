@@ -21,10 +21,10 @@ var collectionPackages = []string{
 	"github.com/saintedlama/goarch/variables",
 }
 
-func loadSelf(t *testing.T) *goarch.Workspace {
+func loadWorkspace(t *testing.T) *goarch.Workspace {
 	t.Helper()
 
-	ws, err := goarch.LoadWorkspace(context.Background(), ".")
+	ws, err := goarch.LoadWorkspace(context.Background(), ".", goarch.WithInMemoryCache())
 	require.NoError(t, err, "failed to load goarch workspace")
 
 	return ws
@@ -33,7 +33,7 @@ func loadSelf(t *testing.T) *goarch.Workspace {
 // TestArch_AllCollectionPackagesExist verifies that each expected collection
 // sub-package is present in the workspace.
 func TestArch_AllCollectionPackagesExist(t *testing.T) {
-	ws := loadSelf(t)
+	ws := loadWorkspace(t)
 
 	for _, want := range collectionPackages {
 		refs := ws.MatchPackages(func(pkg goarch.Package) bool {
@@ -46,7 +46,7 @@ func TestArch_AllCollectionPackagesExist(t *testing.T) {
 // TestArch_CollectionPackagesDefineRequiredTypes verifies that every collection
 // sub-package exports Item, Collection, and MatchFunc types.
 func TestArch_CollectionPackagesDefineRequiredTypes(t *testing.T) {
-	ws := loadSelf(t)
+	ws := loadWorkspace(t)
 
 	required := []string{"Item", "Collection", "MatchFunc"}
 
@@ -63,7 +63,7 @@ func TestArch_CollectionPackagesDefineRequiredTypes(t *testing.T) {
 // TestArch_CollectionPackagesDefineRequiredMethods verifies that every collection
 // sub-package has Add, All, Len, and Match methods on its Collection type.
 func TestArch_CollectionPackagesDefineRequiredMethods(t *testing.T) {
-	ws := loadSelf(t)
+	ws := loadWorkspace(t)
 
 	required := []string{"Add", "All", "Len", "Match"}
 
@@ -82,7 +82,7 @@ func TestArch_CollectionPackagesDefineRequiredMethods(t *testing.T) {
 // TestArch_LibraryCodeDoesNotCallPanicOrExit verifies that non-internal, non-test
 // library packages never call panic or os.Exit.
 func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
-	ws := loadSelf(t)
+	ws := loadWorkspace(t)
 
 	forbidden := []string{"panic", "os.Exit"}
 
