@@ -87,23 +87,17 @@ func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
 
 	forbidden := []string{"panic", "os.Exit"}
 
-	refs := ws.MatchFunctionCalls(func(fc goarch.FunctionCall) bool {
-		isForbidden := slices.Contains(forbidden, fc.Callee)
+	refs := ws.FunctionCalls.
+		InPackage("github.com/saintedlama/goarch/...").
+		NotInPackage("github.com/saintedlama/goarch/internal/...").
+		IsNotTest().
+		Match(func(fc goarch.FunctionCall) bool {
+			if !slices.Contains(forbidden, fc.Callee) {
+				return false
+			}
 
-		if !isForbidden {
-			return false
-		}
-
-		if strings.Contains(fc.Ref.PackageID, "/internal") {
-			return false
-		}
-
-		if strings.HasSuffix(fc.Ref.Filename, "_test.go") {
-			return false
-		}
-
-		return true
-	})
+			return true
+		})
 
 	assert.Empty(t, refs, "panic and os.Exit forbidden in library code violated:\n%s", refs.Format())
 }

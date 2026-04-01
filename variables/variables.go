@@ -37,6 +37,78 @@ func (c Collection) Len() int {
 	return len(c.items)
 }
 
+// InPackage returns a filtered collection containing only items in matching package patterns.
+// A pattern ending in "/..." matches the base package and all of its sub-packages.
+func (c Collection) InPackage(patterns ...string) Collection {
+	if len(patterns) == 0 {
+		return c
+	}
+
+	filtered := make([]Item, 0, len(c.items))
+	for _, item := range c.items {
+		if !common.PackageMatchesAny(item.Ref.PackageID, patterns...) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	return Collection{items: filtered}
+}
+
+// NotInPackage returns a filtered collection excluding items in matching package patterns.
+// A pattern ending in "/..." matches the base package and all of its sub-packages.
+func (c Collection) NotInPackage(patterns ...string) Collection {
+	if len(patterns) == 0 {
+		return c
+	}
+
+	filtered := make([]Item, 0, len(c.items))
+	for _, item := range c.items {
+		if common.PackageMatchesAny(item.Ref.PackageID, patterns...) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	return Collection{items: filtered}
+}
+
+// IsTest returns a filtered collection containing only items from _test.go files.
+func (c Collection) IsTest() Collection {
+	filtered := make([]Item, 0, len(c.items))
+	for _, item := range c.items {
+		if !common.IsTestFilename(item.Ref.Filename) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	return Collection{items: filtered}
+}
+
+// IsNotTest returns a filtered collection excluding items from _test.go files.
+func (c Collection) IsNotTest() Collection {
+	filtered := make([]Item, 0, len(c.items))
+	for _, item := range c.items {
+		if common.IsTestFilename(item.Ref.Filename) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	return Collection{items: filtered}
+}
+
+// InTest is an alias for IsTest kept for backward compatibility.
+func (c Collection) InTest() Collection {
+	return c.IsTest()
+}
+
+// NotInTest is an alias for IsNotTest kept for backward compatibility.
+func (c Collection) NotInTest() Collection {
+	return c.IsNotTest()
+}
+
 // Match applies matcher to all variable entries and converts matches into code refs.
 func (c Collection) Match(matcher MatchFunc) common.Refs {
 	if matcher == nil {

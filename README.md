@@ -21,6 +21,9 @@ After loading a module, `goarch` builds top-level collections for:
 
 Each collection supports a fluent `Match(...)` API that returns code refs with source references.
 Refs also carry a kind-specific match label and can be rendered with `FormatRef` or `FormatRefs`.
+Collections also support chainable package filters via `InPackage(...)` and `NotInPackage(...)`.
+Use the `"/..."` suffix to match a package and all of its sub-packages.
+Collections also support test-file filters via `IsTest()` and `IsNotTest()`.
 
 ## Install
 
@@ -66,14 +69,16 @@ func TestNoFmtErrorfCalls(t *testing.T) {
     t.Fatalf("LoadWorkspace failed: %v", err)
   }
 
-  refs := workspace.MatchFunctionCalls(
-    goarch.FunctionCallMatchFunc(func(c goarch.FunctionCall) bool {
+  refs := workspace.FunctionCalls.
+    InPackage("github.com/your-project/...").
+    NotInPackage("github.com/your-project/internal/...").
+    IsNotTest().
+    Match(func(c goarch.FunctionCall) bool {
       if c.Callee == "fmt.Errorf" {
         return true
       }
       return false
-    }),
-  )
+    })
 
   if len(refs) == 0 {
     return
