@@ -152,3 +152,7 @@ make test-verbose
 - `LoadWorkspace` expects a Go module directory with `go.mod`.
 - `WithReporter(...)` is optional and useful for progress output.
 - `WithInMemoryCache()` is optional and reuses a loaded workspace by path.
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
