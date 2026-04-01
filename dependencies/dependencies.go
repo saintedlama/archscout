@@ -1,6 +1,9 @@
 package dependencies
 
 import (
+	"sort"
+	"strings"
+
 	"github.com/saintedlama/goarch/common"
 )
 
@@ -22,6 +25,63 @@ type Collection struct {
 	items []Item
 }
 
+// TreeNode represents one node in the dependency import-path hierarchy.
+//
+// Dependencies are attached to the node that exactly matches their full import path.
+// Intermediate nodes are path segments used for grouping.
+type TreeNode struct {
+	Name         string
+	Path         string
+	Dependencies []Item
+	Children     []TreeNode
+}
+
+type treeNodeBuilder struct {
+	name         string
+	path         string
+	dependencies []Item
+	children     map[string]*treeNodeBuilder
+}
+
+func newTreeNodeBuilder(name, path string) *treeNodeBuilder {
+	return &treeNodeBuilder{
+		name:     name,
+		path:     path,
+		children: make(map[string]*treeNodeBuilder),
+	}
+}
+
+func (builder *treeNodeBuilder) child(name, path string) *treeNodeBuilder {
+	next, ok := builder.children[name]
+	if ok {
+		return next
+	}
+
+	next = newTreeNodeBuilder(name, path)
+	builder.children[name] = next
+	return next
+}
+
+func (builder *treeNodeBuilder) Build() TreeNode {
+	childNames := make([]string, 0, len(builder.children))
+	for name := range builder.children {
+		childNames = append(childNames, name)
+	}
+	sort.Strings(childNames)
+
+	children := make([]TreeNode, 0, len(childNames))
+	for _, name := range childNames {
+		children = append(children, builder.children[name].Build())
+	}
+
+	return TreeNode{
+		Name:         builder.name,
+		Path:         builder.path,
+		Dependencies: append([]Item(nil), builder.dependencies...),
+		Children:     children,
+	}
+}
+
 // NewCollection constructs an immutable dependency collection snapshot.
 func NewCollection(items []Item) Collection {
 	return Collection{items: append([]Item(nil), items...)}
@@ -35,6 +95,44 @@ func (c Collection) All() []Item {
 // Len returns number of dependency entries.
 func (c Collection) Len() int {
 	return len(c.items)
+}
+
+// Tree builds an import-path hierarchy tree from dependencies in the collection.
+//
+// Example import path "github.com/acme/service" becomes:
+// root -> "github.com" -> "acme" -> "service" (leaf with dependency entries).
+func (c Collection) Tree() TreeNode {
+	root := newTreeNodeBuilder("", "")
+
+	for _, item := range c.items {
+		if item.ImportPath == "" {
+			continue
+		}
+
+		parts := strings.Split(item.ImportPath, "/")
+		current := root
+		path := ""
+
+		for i, part := range parts {
+			if part == "" {
+				continue
+			}
+
+			if path == "" {
+				path = part
+			} else {
+				path += "/" + part
+			}
+
+			current = current.child(part, path)
+
+			if i == len(parts)-1 {
+				current.dependencies = append(current.dependencies, item)
+			}
+		}
+	}
+
+	return root.Build()
 }
 
 // InPackage returns a filtered collection containing only items in matching package patterns.
