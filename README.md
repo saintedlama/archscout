@@ -1,16 +1,107 @@
 # archscout
 
-`archscout` is a small Go library for loading source code with `go/packages` and exposing simple AST-backed collections for analysis.
+`archscout` helps you keep architecture visible and enforceable in Go codebases.
 
-This project is an experiment to explore low-fidelity code exploration and testing architectures: fast, coarse-grained structural indexing first, then matcher-based checks layered on top.
+Use it to:
 
-## Status
+- Explore code structure quickly (packages, files, types, calls, dependencies)
+- Write architecture tests as code
+- Validate dependency boundaries continuously in CI
 
-Experimental. APIs and behavior may change as ideas are tested.
+## Why archscout
 
-## What it indexes
+Architecture often lives in docs, not in tests. `archscout` lets you move those rules into executable checks.
 
-After loading a module, `archscout` builds top-level collections for:
+Examples:
+
+- "domain must not depend on infrastructure"
+- "library code must not call panic or os.Exit"
+- "application layer may only depend on domain"
+
+When a rule is violated, you get source refs you can print in test failures.
+
+## Install
+
+```bash
+go get github.com/saintedlama/archscout
+```
+
+## Quick Start
+
+```go
+package architecture_test
+
+import (
+  "context"
+  "testing"
+
+  "github.com/saintedlama/archscout"
+)
+
+func TestDomainDoesNotDependOnInfrastructure(t *testing.T) {
+  workspace, err := archscout.LoadWorkspace(context.Background(), ".")
+  if err != nil {
+    t.Fatalf("LoadWorkspace failed: %v", err)
+  }
+
+  rule := archscout.Rule("domain must not depend on infrastructure").
+    Dependencies().
+    InPackage("github.com/your-project/domain/...").
+    DependOn("github.com/your-project/infrastructure/...")
+
+  rule.Test(t, workspace)
+}
+```
+
+## Core Workflows
+
+### 1. Explore a codebase
+
+```go
+refs := workspace.FunctionCalls.
+  InPackage("github.com/your-project/...").
+  IsNotTest().
+  Match(func(call archscout.FunctionCall) bool {
+    return call.Callee == "fmt.Errorf"
+  })
+```
+
+### 2. Validate architecture with reusable rules
+
+```go
+forbidden := map[string]bool{"panic": true, "os.Exit": true}
+
+rule := archscout.Rule("panic and os.Exit forbidden in library code").
+  FunctionCalls().
+  InPackage("github.com/your-project/...").
+  NotInPackage("github.com/your-project/internal/...").
+  IsNotTest().
+  Match(func(fc archscout.FunctionCall) bool {
+    return forbidden[fc.Callee]
+  })
+
+rule.Test(t, workspace)
+```
+
+### 3. Reason about dependencies
+
+Dependency checks can be done directly or through files/packages.
+
+```go
+rule := archscout.Rule("files with stdlib deps").
+  Files().
+  Match(func(file archscout.File) bool {
+    return file.Dependencies().IsStandardLibrary().Len() == 0
+  })
+
+rule.Test(t, workspace)
+```
+
+For hierarchy-style reporting, use `workspace.Dependencies.Tree()`.
+
+## What You Can Query
+
+`archscout` exposes collections for:
 
 - Packages
 - Files
@@ -20,122 +111,44 @@ After loading a module, `archscout` builds top-level collections for:
 - Function calls
 - Dependencies
 
-Each collection supports a fluent `Match(...)` API that returns code refs with source references.
-Refs also carry a kind-specific match label and can be rendered with `FormatRef` or `FormatRefs`.
-Collections also support chainable package filters via `InPackage(...)` and `NotInPackage(...)`.
-Use the `"/..."` suffix to match a package and all of its sub-packages.
-Collections also support test-file filters via `IsTest()` and `IsNotTest()`.
+Each collection supports:
 
-## Install
+- `Match(...)` for custom predicates
+- package filtering via `InPackage(...)` / `NotInPackage(...)`
+- test-file filtering via `IsTest()` / `IsNotTest()`
 
-```bash
-go get github.com/saintedlama/archscout
-```
+Dependencies additionally support:
+
+- `IsWithinWorkspace()` / `IsExternal()`
+- `IsStandardLibrary()` / `IsThirdParty()`
+- `DependOn(...)` / `DoNotDependOn(...)`
+- `Tree()`
 
 ## Public API
 
 - `LoadWorkspace(ctx, dir, opts...) (*Workspace, error)`
 - `WithReporter(func(string)) LoadWorkspaceOption`
 - `WithInMemoryCache() LoadWorkspaceOption`
-- `Rule(name)` to define workspace-independent reusable rules with `rule.Test(t, workspace)`
-- Workspace matcher methods:
-  - `workspace.MatchPackages(...)`
-  - `workspace.MatchFiles(...)`
-  - `workspace.MatchTypes(...)`
-  - `workspace.MatchFunctions(...)`
-  - `workspace.MatchVariables(...)`
-  - `workspace.MatchFunctionCalls(...)`
-  - `workspace.MatchDependencies(...)`
+- `Rule(name)`
 
-## Rules
+Rule types expose:
 
-Rules are configured independently of a workspace and can be reused across tests:
-
-```go
-forbidden := []string{"panic", "os.Exit"}
-
-rule := archscout.Rule("panic and os.Exit forbidden in library code").
-  FunctionCalls().
-  InPackage("github.com/your-project/...").
-  NotInPackage("github.com/your-project/internal/...").
-  IsNotTest().
-  Match(func(fc archscout.FunctionCall) bool {
-    return slices.Contains(forbidden, fc.Callee)
-  })
-
-rule.Test(t, workspace)
-```
-
-## Quick start
-
-```go
-package architecture_test
-
-import (
-  "context"
-  "fmt"
-  "testing"
-
-  "github.com/saintedlama/archscout"
-)
-
-func TestNoFmtErrorfCalls(t *testing.T) {
-  workspace, err := archscout.LoadWorkspace(
-    context.Background(),
-    ".",
-    archscout.WithReporter(func(msg string) {
-      fmt.Println(msg)
-    }),
-  )
-  if err != nil {
-    t.Fatalf("LoadWorkspace failed: %v", err)
-  }
-
-  refs := workspace.FunctionCalls.
-    InPackage("github.com/your-project/...").
-    NotInPackage("github.com/your-project/internal/...").
-    IsNotTest().
-    Match(func(c archscout.FunctionCall) bool {
-      if c.Callee == "fmt.Errorf" {
-        return true
-      }
-      return false
-    })
-
-  if len(refs) == 0 {
-    return
-  }
-
-  t.Fatalf("fmt.Errorf is forbidden in %s", refs.Format(archscout.WithRefPackage()))
-}
-```
-
-If you do not want progress output:
-
-```go
-workspace, err := archscout.LoadWorkspace(context.Background(), ".")
-```
-
-Run it with:
-
-```bash
-go test ./...
-```
+- fluent filters (package/test and kind-specific filters)
+- `Match(...)`
+- `Evaluate(workspace)`
+- `Test(t, workspace)`
 
 ## Development
 
-Available `make` targets:
-
-- `make fmt`
-- `make vet`
-- `make build`
-- `make test-verbose`
-
-CI runs these checks on pushes and pull requests.
+```bash
+make fmt
+make vet
+make build
+make test-verbose
+```
 
 ## Notes
 
-- `LoadWorkspace` expects a Go module directory (with `go.mod`).
-- Progress reporting is optional via `archscout.WithReporter(func(string) { ... })`.
-- In-memory caching is optional via `archscout.WithInMemoryCache()` and reuses an already loaded workspace by path.
-- Package loading is based on `golang.org/x/tools/go/packages` for more precise module-aware parsing than ad-hoc file parsing.
+- `LoadWorkspace` expects a Go module directory with `go.mod`.
+- `WithReporter(...)` is optional and useful for progress output.
+- `WithInMemoryCache()` is optional and reuses a loaded workspace by path.
