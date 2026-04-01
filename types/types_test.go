@@ -3,8 +3,8 @@ package types_test
 import (
 	"testing"
 
-	"github.com/saintedlama/goarch/internaltest"
-	"github.com/saintedlama/goarch/types"
+	"github.com/saintedlama/archscout/internaltest"
+	"github.com/saintedlama/archscout/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -6,10 +6,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/saintedlama/goarch"
+	"github.com/saintedlama/archscout"
 )
 
-func LoadFixtureWorkspace(t testing.TB, fixtureName string) *goarch.Workspace {
+func LoadFixtureWorkspace(t testing.TB, fixtureName string) *archscout.Workspace {
 	t.Helper()
 
 	_, filename, _, ok := runtime.Caller(0)
@@ -18,7 +18,7 @@ func LoadFixtureWorkspace(t testing.TB, fixtureName string) *goarch.Workspace {
 	}
 
 	dir := filepath.Join(filepath.Dir(filename), "..", "testdata", fixtureName)
-	workspace, err := goarch.LoadWorkspace(context.Background(), dir)
+	workspace, err := archscout.LoadWorkspace(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("LoadWorkspace(%q) failed: %v", dir, err)
 	}

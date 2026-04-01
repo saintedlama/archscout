@@ -1,4 +1,4 @@
-package goarch_test
+package archscout_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/saintedlama/goarch"
+	"github.com/saintedlama/archscout"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,19 +14,19 @@ import (
 // collectionPackages are the sub-packages that each define the
 // Item / Collection / MatchFunc triad and must follow the read-only collection pattern.
 var collectionPackages = []string{
-	"github.com/saintedlama/goarch/files",
-	"github.com/saintedlama/goarch/functions",
-	"github.com/saintedlama/goarch/functioncalls",
-	"github.com/saintedlama/goarch/packages",
-	"github.com/saintedlama/goarch/types",
-	"github.com/saintedlama/goarch/variables",
+	"github.com/saintedlama/archscout/files",
+	"github.com/saintedlama/archscout/functions",
+	"github.com/saintedlama/archscout/functioncalls",
+	"github.com/saintedlama/archscout/packages",
+	"github.com/saintedlama/archscout/types",
+	"github.com/saintedlama/archscout/variables",
 }
 
-func loadWorkspace(t *testing.T) *goarch.Workspace {
+func loadWorkspace(t *testing.T) *archscout.Workspace {
 	t.Helper()
 
-	ws, err := goarch.LoadWorkspace(context.Background(), ".", goarch.WithInMemoryCache())
-	require.NoError(t, err, "failed to load goarch workspace")
+	ws, err := archscout.LoadWorkspace(context.Background(), ".", archscout.WithInMemoryCache())
+	require.NoError(t, err, "failed to load archscout workspace")
 
 	return ws
 }
@@ -37,7 +37,7 @@ func TestArch_AllCollectionPackagesExist(t *testing.T) {
 	ws := loadWorkspace(t)
 
 	for _, want := range collectionPackages {
-		refs := ws.MatchPackages(func(pkg goarch.Package) bool {
+		refs := ws.MatchPackages(func(pkg archscout.Package) bool {
 			return pkg.ID == want
 		})
 		assert.NotEmpty(t, refs, "expected package %q not found in workspace", want)
@@ -53,7 +53,7 @@ func TestArch_CollectionPackagesDefineRequiredTypes(t *testing.T) {
 
 	for _, pkg := range collectionPackages {
 		for _, typeName := range required {
-			refs := ws.MatchTypes(func(typ goarch.Type) bool {
+			refs := ws.MatchTypes(func(typ archscout.Type) bool {
 				return typ.Ref.PackageID == pkg && typ.Name == typeName
 			})
 			assert.NotEmpty(t, refs, "package %q is missing required exported type %q", pkg, typeName)
@@ -70,7 +70,7 @@ func TestArch_CollectionPackagesDefineRequiredMethods(t *testing.T) {
 
 	for _, pkg := range collectionPackages {
 		for _, method := range required {
-			refs := ws.MatchFunctions(func(fn goarch.Function) bool {
+			refs := ws.MatchFunctions(func(fn archscout.Function) bool {
 				return fn.Ref.PackageID == pkg &&
 					fn.Name == method &&
 					strings.Contains(fn.Receiver, "Collection")
@@ -86,12 +86,12 @@ func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
 	ws := loadWorkspace(t)
 
 	forbidden := []string{"panic", "os.Exit"}
-	rule := goarch.Rule("panic and os.Exit forbidden in library code").
+	rule := archscout.Rule("panic and os.Exit forbidden in library code").
 		FunctionCalls().
-		InPackage("github.com/saintedlama/goarch/...").
-		NotInPackage("github.com/saintedlama/goarch/internal/...").
+		InPackage("github.com/saintedlama/archscout/...").
+		NotInPackage("github.com/saintedlama/archscout/internal/...").
 		IsNotTest().
-		Match(func(fc goarch.FunctionCall) bool {
+		Match(func(fc archscout.FunctionCall) bool {
 			if !slices.Contains(forbidden, fc.Callee) {
 				return false
 			}

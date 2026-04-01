@@ -1,6 +1,6 @@
-# goarch
+# archscout
 
-`goarch` is a small Go library for loading source code with `go/packages` and exposing simple AST-backed collections for analysis.
+`archscout` is a small Go library for loading source code with `go/packages` and exposing simple AST-backed collections for analysis.
 
 This project is an experiment to explore low-fidelity code exploration and testing architectures: fast, coarse-grained structural indexing first, then matcher-based checks layered on top.
 
@@ -10,7 +10,7 @@ Experimental. APIs and behavior may change as ideas are tested.
 
 ## What it indexes
 
-After loading a module, `goarch` builds top-level collections for:
+After loading a module, `archscout` builds top-level collections for:
 
 - Packages
 - Files
@@ -29,7 +29,7 @@ Collections also support test-file filters via `IsTest()` and `IsNotTest()`.
 ## Install
 
 ```bash
-go get github.com/saintedlama/goarch
+go get github.com/saintedlama/archscout
 ```
 
 ## Public API
@@ -54,12 +54,12 @@ Rules are configured independently of a workspace and can be reused across tests
 ```go
 forbidden := []string{"panic", "os.Exit"}
 
-rule := goarch.Rule("panic and os.Exit forbidden in library code").
+rule := archscout.Rule("panic and os.Exit forbidden in library code").
   FunctionCalls().
   InPackage("github.com/your-project/...").
   NotInPackage("github.com/your-project/internal/...").
   IsNotTest().
-  Match(func(fc goarch.FunctionCall) bool {
+  Match(func(fc archscout.FunctionCall) bool {
     return slices.Contains(forbidden, fc.Callee)
   })
 
@@ -76,14 +76,14 @@ import (
   "fmt"
   "testing"
 
-  "github.com/saintedlama/goarch"
+  "github.com/saintedlama/archscout"
 )
 
 func TestNoFmtErrorfCalls(t *testing.T) {
-  workspace, err := goarch.LoadWorkspace(
+  workspace, err := archscout.LoadWorkspace(
     context.Background(),
     ".",
-    goarch.WithReporter(func(msg string) {
+    archscout.WithReporter(func(msg string) {
       fmt.Println(msg)
     }),
   )
@@ -95,7 +95,7 @@ func TestNoFmtErrorfCalls(t *testing.T) {
     InPackage("github.com/your-project/...").
     NotInPackage("github.com/your-project/internal/...").
     IsNotTest().
-    Match(func(c goarch.FunctionCall) bool {
+    Match(func(c archscout.FunctionCall) bool {
       if c.Callee == "fmt.Errorf" {
         return true
       }
@@ -106,14 +106,14 @@ func TestNoFmtErrorfCalls(t *testing.T) {
     return
   }
 
-  t.Fatalf("fmt.Errorf is forbidden in %s", refs.Format(goarch.WithRefPackage()))
+  t.Fatalf("fmt.Errorf is forbidden in %s", refs.Format(archscout.WithRefPackage()))
 }
 ```
 
 If you do not want progress output:
 
 ```go
-workspace, err := goarch.LoadWorkspace(context.Background(), ".")
+workspace, err := archscout.LoadWorkspace(context.Background(), ".")
 ```
 
 Run it with:
@@ -136,6 +136,6 @@ CI runs these checks on pushes and pull requests.
 ## Notes
 
 - `LoadWorkspace` expects a Go module directory (with `go.mod`).
-- Progress reporting is optional via `goarch.WithReporter(func(string) { ... })`.
-- In-memory caching is optional via `goarch.WithInMemoryCache()` and reuses an already loaded workspace by path.
+- Progress reporting is optional via `archscout.WithReporter(func(string) { ... })`.
+- In-memory caching is optional via `archscout.WithInMemoryCache()` and reuses an already loaded workspace by path.
 - Package loading is based on `golang.org/x/tools/go/packages` for more precise module-aware parsing than ad-hoc file parsing.

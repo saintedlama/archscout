@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/saintedlama/goarch"
+	"github.com/saintedlama/archscout"
 )
 
 type stepTiming struct {
@@ -25,10 +25,10 @@ func main() {
 	last := start
 	var steps []stepTiming
 
-	_, err := goarch.LoadWorkspace(
+	_, err := archscout.LoadWorkspace(
 		context.Background(),
 		dir,
-		goarch.WithReporter(func(msg string) {
+		archscout.WithReporter(func(msg string) {
 			now := time.Now()
 			steps = append(steps, stepTiming{
 				Message: msg,

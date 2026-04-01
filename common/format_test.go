@@ -3,7 +3,7 @@ package common_test
 import (
 	"testing"
 
-	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/archscout/common"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +22,7 @@ func TestFormatRefs_DefaultFormattingUsesLocationAndMatch(t *testing.T) {
 func TestFormatRefs_OptionsCanCustomizeOutput(t *testing.T) {
 	formatted := common.Refs{
 		{
-			PackageID: "github.com/saintedlama/goarch/testdata/fixturemod",
+			PackageID: "github.com/saintedlama/archscout/testdata/fixturemod",
 			Filename:  "main.go",
 			Line:      19,
 			Column:    9,
@@ -30,7 +30,7 @@ func TestFormatRefs_OptionsCanCustomizeOutput(t *testing.T) {
 			Match:     `fmt.Errorf("root error")`,
 		},
 		{
-			PackageID: "github.com/saintedlama/goarch/testdata/fixturemod/subpkg",
+			PackageID: "github.com/saintedlama/archscout/testdata/fixturemod/subpkg",
 			Filename:  "sub.go",
 			Line:      6,
 			Column:    9,
@@ -41,7 +41,7 @@ func TestFormatRefs_OptionsCanCustomizeOutput(t *testing.T) {
 
 	assert.Equal(
 		t,
-		`main.go:19 package github.com/saintedlama/goarch/testdata/fixturemod fmt.Errorf("root error") | sub.go:6 package github.com/saintedlama/goarch/testdata/fixturemod/subpkg fmt.Errorf("sub error")`,
+		`main.go:19 package github.com/saintedlama/archscout/testdata/fixturemod fmt.Errorf("root error") | sub.go:6 package github.com/saintedlama/archscout/testdata/fixturemod/subpkg fmt.Errorf("sub error")`,
 		formatted,
 	)
 }

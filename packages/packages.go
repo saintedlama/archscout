@@ -4,8 +4,8 @@ import (
 	"go/ast"
 	"go/token"
 
-	"github.com/saintedlama/goarch/common"
-	"github.com/saintedlama/goarch/dependencies"
+	"github.com/saintedlama/archscout/common"
+	"github.com/saintedlama/archscout/dependencies"
 
 	toolspackages "golang.org/x/tools/go/packages"
 )

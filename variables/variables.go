@@ -3,7 +3,7 @@ package variables
 import (
 	"go/ast"
 
-	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/archscout/common"
 )
 
 // Item represents a variable/constant declaration entry.

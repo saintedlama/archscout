@@ -1,4 +1,4 @@
-package goarch
+package archscout
 
 import (
 	"context"

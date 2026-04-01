@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/archscout/common"
 )
 
 // Item represents one file import dependency.

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/saintedlama/goarch/files"
-	"github.com/saintedlama/goarch/internaltest"
+	"github.com/saintedlama/archscout/files"
+	"github.com/saintedlama/archscout/internaltest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

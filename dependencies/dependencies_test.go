@@ -3,8 +3,8 @@ package dependencies_test
 import (
 	"testing"
 
-	"github.com/saintedlama/goarch/common"
-	"github.com/saintedlama/goarch/dependencies"
+	"github.com/saintedlama/archscout/common"
+	"github.com/saintedlama/archscout/dependencies"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

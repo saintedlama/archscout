@@ -1,4 +1,4 @@
-package goarch_test
+package archscout_test
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/saintedlama/goarch"
-	"github.com/saintedlama/goarch/internaltest"
+	"github.com/saintedlama/archscout"
+	"github.com/saintedlama/archscout/internaltest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,10 +41,10 @@ func TestLoadWorkspace_BuildsTopLevelCollections(t *testing.T) {
 func TestLoadWorkspace_WithInMemoryCache_ReusesWorkspaceForSamePath(t *testing.T) {
 	fixtureDir := fixtureDir(t, "fixturemod")
 
-	first, err := goarch.LoadWorkspace(context.Background(), fixtureDir, goarch.WithInMemoryCache())
+	first, err := archscout.LoadWorkspace(context.Background(), fixtureDir, archscout.WithInMemoryCache())
 	require.NoError(t, err)
 
-	second, err := goarch.LoadWorkspace(context.Background(), fixtureDir, goarch.WithInMemoryCache())
+	second, err := archscout.LoadWorkspace(context.Background(), fixtureDir, archscout.WithInMemoryCache())
 	require.NoError(t, err)
 
 	assert.Same(t, first, second, "expected cached workspace instance to be reused")
@@ -53,10 +53,10 @@ func TestLoadWorkspace_WithInMemoryCache_ReusesWorkspaceForSamePath(t *testing.T
 func TestLoadWorkspace_WithoutInMemoryCache_DoesNotReuseWorkspace(t *testing.T) {
 	fixtureDir := fixtureDir(t, "fixturemod")
 
-	first, err := goarch.LoadWorkspace(context.Background(), fixtureDir)
+	first, err := archscout.LoadWorkspace(context.Background(), fixtureDir)
 	require.NoError(t, err)
 
-	second, err := goarch.LoadWorkspace(context.Background(), fixtureDir)
+	second, err := archscout.LoadWorkspace(context.Background(), fixtureDir)
 	require.NoError(t, err)
 
 	assert.NotSame(t, first, second, "expected distinct workspace instances when cache option is disabled")

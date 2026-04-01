@@ -3,8 +3,8 @@ package files
 import (
 	"go/ast"
 
-	"github.com/saintedlama/goarch/common"
-	"github.com/saintedlama/goarch/dependencies"
+	"github.com/saintedlama/archscout/common"
+	"github.com/saintedlama/archscout/dependencies"
 )
 
 // Item represents a parsed Go source file entry.

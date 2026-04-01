@@ -1,4 +1,4 @@
-package goarch
+package archscout
 
 import (
 	"bytes"
@@ -12,15 +12,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/saintedlama/goarch/common"
-	"github.com/saintedlama/goarch/dependencies"
-	"github.com/saintedlama/goarch/files"
-	"github.com/saintedlama/goarch/functioncalls"
-	"github.com/saintedlama/goarch/functions"
-	"github.com/saintedlama/goarch/packages"
-	"github.com/saintedlama/goarch/types"
-	"github.com/saintedlama/goarch/variables"
-	workspacebuilder "github.com/saintedlama/goarch/workspace/builder"
+	"github.com/saintedlama/archscout/common"
+	"github.com/saintedlama/archscout/dependencies"
+	"github.com/saintedlama/archscout/files"
+	"github.com/saintedlama/archscout/functioncalls"
+	"github.com/saintedlama/archscout/functions"
+	"github.com/saintedlama/archscout/packages"
+	"github.com/saintedlama/archscout/types"
+	"github.com/saintedlama/archscout/variables"
+	workspacebuilder "github.com/saintedlama/archscout/workspace/builder"
 
 	toolspackages "golang.org/x/tools/go/packages"
 )
@@ -36,7 +36,7 @@ type Workspace struct {
 	Dependencies  dependencies.Collection
 }
 
-// Top-level aliases for convenient consumption from goarch package.
+// Top-level aliases for convenient consumption from archscout package.
 type Ref = common.Ref
 type Refs = common.Refs
 type RefKind = common.RefKind

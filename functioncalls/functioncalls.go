@@ -3,7 +3,7 @@ package functioncalls
 import (
 	"go/ast"
 
-	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/archscout/common"
 )
 
 // Item represents a function call entry.

@@ -3,8 +3,8 @@ package packages_test
 import (
 	"testing"
 
-	"github.com/saintedlama/goarch/internaltest"
-	"github.com/saintedlama/goarch/packages"
+	"github.com/saintedlama/archscout/internaltest"
+	"github.com/saintedlama/archscout/packages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

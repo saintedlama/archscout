@@ -3,7 +3,7 @@ package types
 import (
 	"go/ast"
 
-	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/archscout/common"
 )
 
 // Item represents a type declaration entry.

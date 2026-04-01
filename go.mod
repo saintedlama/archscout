@@ -1,4 +1,4 @@
-module github.com/saintedlama/goarch
+module github.com/saintedlama/archscout
 
 go 1.26
 

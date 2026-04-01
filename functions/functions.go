@@ -3,7 +3,7 @@ package functions
 import (
 	"go/ast"
 
-	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/archscout/common"
 )
 
 // Item represents a function or method declaration entry.

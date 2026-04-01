@@ -1,13 +1,13 @@
 package builder
 
 import (
-	"github.com/saintedlama/goarch/dependencies"
-	"github.com/saintedlama/goarch/files"
-	"github.com/saintedlama/goarch/functioncalls"
-	"github.com/saintedlama/goarch/functions"
-	"github.com/saintedlama/goarch/packages"
-	"github.com/saintedlama/goarch/types"
-	"github.com/saintedlama/goarch/variables"
+	"github.com/saintedlama/archscout/dependencies"
+	"github.com/saintedlama/archscout/files"
+	"github.com/saintedlama/archscout/functioncalls"
+	"github.com/saintedlama/archscout/functions"
+	"github.com/saintedlama/archscout/packages"
+	"github.com/saintedlama/archscout/types"
+	"github.com/saintedlama/archscout/variables"
 )
 
 // Snapshot is the immutable collection set produced by a Builder.

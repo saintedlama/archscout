@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/saintedlama/goarch/common"
-	"github.com/saintedlama/goarch/functioncalls"
-	"github.com/saintedlama/goarch/internaltest"
+	"github.com/saintedlama/archscout/common"
+	"github.com/saintedlama/archscout/functioncalls"
+	"github.com/saintedlama/archscout/internaltest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
