@@ -36,6 +36,7 @@ go get github.com/saintedlama/goarch
 - `LoadWorkspace(ctx, dir, opts...) (*Workspace, error)`
 - `WithReporter(func(string)) LoadWorkspaceOption`
 - `WithInMemoryCache() LoadWorkspaceOption`
+- `Rule(name)` to define workspace-independent reusable rules with `rule.Test(t, workspace)`
 - Workspace matcher methods:
   - `workspace.MatchPackages(...)`
   - `workspace.MatchFiles(...)`
@@ -43,6 +44,25 @@ go get github.com/saintedlama/goarch
   - `workspace.MatchFunctions(...)`
   - `workspace.MatchVariables(...)`
   - `workspace.MatchFunctionCalls(...)`
+
+## Rules
+
+Rules are configured independently of a workspace and can be reused across tests:
+
+```go
+forbidden := []string{"panic", "os.Exit"}
+
+rule := goarch.Rule("panic and os.Exit forbidden in library code").
+  FunctionCalls().
+  InPackage("github.com/your-project/...").
+  NotInPackage("github.com/your-project/internal/...").
+  IsNotTest().
+  Match(func(fc goarch.FunctionCall) bool {
+    return slices.Contains(forbidden, fc.Callee)
+  })
+
+rule.Test(t, workspace)
+```
 
 ## Quick start
 

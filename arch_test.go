@@ -86,8 +86,8 @@ func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
 	ws := loadWorkspace(t)
 
 	forbidden := []string{"panic", "os.Exit"}
-
-	refs := ws.FunctionCalls.
+	rule := goarch.Rule("panic and os.Exit forbidden in library code").
+		FunctionCalls().
 		InPackage("github.com/saintedlama/goarch/...").
 		NotInPackage("github.com/saintedlama/goarch/internal/...").
 		IsNotTest().
@@ -99,5 +99,5 @@ func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
 			return true
 		})
 
-	assert.Empty(t, refs, "panic and os.Exit forbidden in library code violated:\n%s", refs.Format())
+	rule.Test(t, ws)
 }
