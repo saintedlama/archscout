@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/goarch/dependencies"
 	"github.com/saintedlama/goarch/files"
 	"github.com/saintedlama/goarch/functioncalls"
 	"github.com/saintedlama/goarch/functions"
@@ -67,6 +68,11 @@ func (b RuleBuilder) FunctionCalls() *FunctionCallRule {
 	return &FunctionCallRule{name: b.name}
 }
 
+// Dependencies configures a dependency-entry rule.
+func (b RuleBuilder) Dependencies() *DependencyRule {
+	return &DependencyRule{name: b.name}
+}
+
 // PackageRule evaluates predicates against package entries.
 type PackageRule struct {
 	name    string
@@ -109,6 +115,18 @@ type FunctionCallRule struct {
 	matcher FunctionCallMatchFunc
 }
 
+// DependencyRule evaluates predicates against dependency entries.
+type DependencyRule struct {
+	name            string
+	filters         ruleFilters
+	matcher         DependencyMatchFunc
+	within          *bool
+	stdlibOnly      bool
+	thirdPartyOnly  bool
+	dependsOn       []string
+	doesNotDependOn []string
+}
+
 func (r *PackageRule) InPackage(patterns ...string) *PackageRule {
 	r.filters.inPackages = append(r.filters.inPackages, patterns...)
 	return r
@@ -136,11 +154,11 @@ func (r *PackageRule) Match(matcher PackageMatchFunc) *PackageRule {
 
 func (r *PackageRule) Test(t testing.TB, ws *Workspace) {
 	t.Helper()
-	refs, err := r.evaluate(ws)
+	refs, err := r.Evaluate(ws)
 	failRuleIfNeeded(t, r.name, refs, err)
 }
 
-func (r *PackageRule) evaluate(ws *Workspace) (Refs, error) {
+func (r *PackageRule) Evaluate(ws *Workspace) (Refs, error) {
 	if ws == nil {
 		return nil, fmt.Errorf("workspace is nil")
 	}
@@ -181,11 +199,11 @@ func (r *FileRule) Match(matcher FileMatchFunc) *FileRule {
 
 func (r *FileRule) Test(t testing.TB, ws *Workspace) {
 	t.Helper()
-	refs, err := r.evaluate(ws)
+	refs, err := r.Evaluate(ws)
 	failRuleIfNeeded(t, r.name, refs, err)
 }
 
-func (r *FileRule) evaluate(ws *Workspace) (Refs, error) {
+func (r *FileRule) Evaluate(ws *Workspace) (Refs, error) {
 	if ws == nil {
 		return nil, fmt.Errorf("workspace is nil")
 	}
@@ -226,11 +244,11 @@ func (r *TypeRule) Match(matcher TypeMatchFunc) *TypeRule {
 
 func (r *TypeRule) Test(t testing.TB, ws *Workspace) {
 	t.Helper()
-	refs, err := r.evaluate(ws)
+	refs, err := r.Evaluate(ws)
 	failRuleIfNeeded(t, r.name, refs, err)
 }
 
-func (r *TypeRule) evaluate(ws *Workspace) (Refs, error) {
+func (r *TypeRule) Evaluate(ws *Workspace) (Refs, error) {
 	if ws == nil {
 		return nil, fmt.Errorf("workspace is nil")
 	}
@@ -271,11 +289,11 @@ func (r *FunctionRule) Match(matcher FunctionMatchFunc) *FunctionRule {
 
 func (r *FunctionRule) Test(t testing.TB, ws *Workspace) {
 	t.Helper()
-	refs, err := r.evaluate(ws)
+	refs, err := r.Evaluate(ws)
 	failRuleIfNeeded(t, r.name, refs, err)
 }
 
-func (r *FunctionRule) evaluate(ws *Workspace) (Refs, error) {
+func (r *FunctionRule) Evaluate(ws *Workspace) (Refs, error) {
 	if ws == nil {
 		return nil, fmt.Errorf("workspace is nil")
 	}
@@ -316,11 +334,11 @@ func (r *VariableRule) Match(matcher VariableMatchFunc) *VariableRule {
 
 func (r *VariableRule) Test(t testing.TB, ws *Workspace) {
 	t.Helper()
-	refs, err := r.evaluate(ws)
+	refs, err := r.Evaluate(ws)
 	failRuleIfNeeded(t, r.name, refs, err)
 }
 
-func (r *VariableRule) evaluate(ws *Workspace) (Refs, error) {
+func (r *VariableRule) Evaluate(ws *Workspace) (Refs, error) {
 	if ws == nil {
 		return nil, fmt.Errorf("workspace is nil")
 	}
@@ -361,11 +379,11 @@ func (r *FunctionCallRule) Match(matcher FunctionCallMatchFunc) *FunctionCallRul
 
 func (r *FunctionCallRule) Test(t testing.TB, ws *Workspace) {
 	t.Helper()
-	refs, err := r.evaluate(ws)
+	refs, err := r.Evaluate(ws)
 	failRuleIfNeeded(t, r.name, refs, err)
 }
 
-func (r *FunctionCallRule) evaluate(ws *Workspace) (Refs, error) {
+func (r *FunctionCallRule) Evaluate(ws *Workspace) (Refs, error) {
 	if ws == nil {
 		return nil, fmt.Errorf("workspace is nil")
 	}
@@ -377,6 +395,112 @@ func (r *FunctionCallRule) evaluate(ws *Workspace) (Refs, error) {
 	collection = applyFunctionCallFilters(collection, r.filters)
 
 	return collection.Match(r.matcher), nil
+}
+
+func (r *DependencyRule) InPackage(patterns ...string) *DependencyRule {
+	r.filters.inPackages = append(r.filters.inPackages, patterns...)
+	return r
+}
+
+func (r *DependencyRule) NotInPackage(patterns ...string) *DependencyRule {
+	r.filters.notInPackages = append(r.filters.notInPackages, patterns...)
+	return r
+}
+
+func (r *DependencyRule) IsTest() *DependencyRule {
+	r.filters.testFilter = testFilterOnly
+	return r
+}
+
+func (r *DependencyRule) IsNotTest() *DependencyRule {
+	r.filters.testFilter = testFilterExclude
+	return r
+}
+
+func (r *DependencyRule) IsWithinWorkspace() *DependencyRule {
+	value := true
+	r.within = &value
+	return r
+}
+
+func (r *DependencyRule) IsExternal() *DependencyRule {
+	value := false
+	r.within = &value
+	return r
+}
+
+func (r *DependencyRule) IsStandardLibrary() *DependencyRule {
+	r.stdlibOnly = true
+	return r
+}
+
+func (r *DependencyRule) IsThirdParty() *DependencyRule {
+	r.thirdPartyOnly = true
+	return r
+}
+
+func (r *DependencyRule) DependOn(patterns ...string) *DependencyRule {
+	r.dependsOn = append(r.dependsOn, patterns...)
+	return r
+}
+
+func (r *DependencyRule) DoNotDependOn(patterns ...string) *DependencyRule {
+	r.doesNotDependOn = append(r.doesNotDependOn, patterns...)
+	return r
+}
+
+func (r *DependencyRule) Match(matcher DependencyMatchFunc) *DependencyRule {
+	r.matcher = matcher
+	return r
+}
+
+func (r *DependencyRule) Test(t testing.TB, ws *Workspace) {
+	t.Helper()
+	refs, err := r.Evaluate(ws)
+	failRuleIfNeeded(t, r.name, refs, err)
+}
+
+func (r *DependencyRule) Evaluate(ws *Workspace) (Refs, error) {
+	if ws == nil {
+		return nil, fmt.Errorf("workspace is nil")
+	}
+
+	collection := ws.Dependencies
+	collection = applyDependencyFilters(collection, r.filters)
+
+	if r.within != nil {
+		if *r.within {
+			collection = collection.IsWithinWorkspace()
+		} else {
+			collection = collection.IsExternal()
+		}
+	}
+	if r.stdlibOnly {
+		collection = collection.IsStandardLibrary()
+	}
+	if r.thirdPartyOnly {
+		collection = collection.IsThirdParty()
+	}
+	if len(r.dependsOn) > 0 {
+		collection = collection.DependOn(r.dependsOn...)
+	}
+	if len(r.doesNotDependOn) > 0 {
+		collection = collection.DoNotDependOn(r.doesNotDependOn...)
+	}
+
+	if r.matcher != nil {
+		return collection.Match(r.matcher), nil
+	}
+
+	// No matcher: every dependency surviving the filters is a violation.
+	if collection.Len() == 0 {
+		return nil, nil
+	}
+	var refs Refs
+	for _, item := range collection.All() {
+		refs = append(refs, item.Ref)
+	}
+	return refs, nil
 }
 
 func applyPackageFilters(collection packages.Collection, filters ruleFilters) packages.Collection {
@@ -465,6 +589,23 @@ func applyVariableFilters(collection variables.Collection, filters ruleFilters) 
 }
 
 func applyFunctionCallFilters(collection functioncalls.Collection, filters ruleFilters) functioncalls.Collection {
+	if len(filters.inPackages) > 0 {
+		collection = collection.InPackage(filters.inPackages...)
+	}
+	if len(filters.notInPackages) > 0 {
+		collection = collection.NotInPackage(filters.notInPackages...)
+	}
+	switch filters.testFilter {
+	case testFilterOnly:
+		collection = collection.IsTest()
+	case testFilterExclude:
+		collection = collection.IsNotTest()
+	}
+
+	return collection
+}
+
+func applyDependencyFilters(collection dependencies.Collection, filters ruleFilters) dependencies.Collection {
 	if len(filters.inPackages) > 0 {
 		collection = collection.InPackage(filters.inPackages...)
 	}

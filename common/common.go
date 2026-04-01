@@ -10,6 +10,7 @@ const (
 	RefKindFunction     RefKind = "function"
 	RefKindVariable     RefKind = "variable"
 	RefKindFunctionCall RefKind = "functioncall"
+	RefKindDependency   RefKind = "dependency"
 )
 
 // Ref identifies a source location for a matched entry.

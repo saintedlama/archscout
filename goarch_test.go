@@ -35,6 +35,7 @@ func TestLoadWorkspace_BuildsTopLevelCollections(t *testing.T) {
 	assert.Greater(t, program.Functions.Len(), 0, "expected at least one function entry")
 	assert.Greater(t, program.Variables.Len(), 0, "expected at least one variable entry")
 	assert.Greater(t, program.FunctionCalls.Len(), 0, "expected at least one function call entry")
+	assert.Greater(t, program.Dependencies.Len(), 0, "expected at least one dependency entry")
 }
 
 func TestLoadWorkspace_WithInMemoryCache_ReusesWorkspaceForSamePath(t *testing.T) {

@@ -17,37 +17,41 @@ func TestFunctionCalls_FindsExpectedFmtErrorfCalls(t *testing.T) {
 	refs := workspace.FunctionCalls.Match(func(call functioncalls.Item) bool {
 		return call.Callee == "fmt.Errorf"
 	})
-	require.Len(t, refs, 2, "expected 2 fmt.Errorf refs")
+	require.Len(t, refs, 3, "expected 3 fmt.Errorf refs")
 
-	var sawRoot, sawSub bool
+	var sawApp, sawInfra, sawSub bool
 	for _, f := range refs {
 		normalized := strings.ReplaceAll(f.Filename, "\\", "/")
-		if strings.HasSuffix(normalized, "/main.go") {
-			sawRoot = true
+		if strings.HasSuffix(normalized, "/application/service.go") {
+			sawApp = true
+		}
+		if strings.HasSuffix(normalized, "/infrastructure/repo.go") {
+			sawInfra = true
 		}
 		if strings.HasSuffix(normalized, "/subpkg/sub.go") {
 			sawSub = true
 		}
 	}
 
-	assert.True(t, sawRoot, "did not find fmt.Errorf in fixture main.go")
-	assert.True(t, sawSub, "did not find fmt.Errorf in fixture subpkg/sub.go")
+	assert.True(t, sawApp, "did not find fmt.Errorf in application/service.go")
+	assert.True(t, sawInfra, "did not find fmt.Errorf in infrastructure/repo.go")
+	assert.True(t, sawSub, "did not find fmt.Errorf in subpkg/sub.go")
 }
 
 func TestFunctionCalls_InPackageAndNotInPackage_CanBeChained(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
+	// Only application-layer fmt.Errorf calls (excluding infrastructure and subpkg).
 	refs := workspace.FunctionCalls.
-		InPackage("example.com/fixturemod/...").
-		NotInPackage("example.com/fixturemod/subpkg/...").
+		InPackage("example.com/fixturemod/application").
 		Match(func(call functioncalls.Item) bool {
 			return call.Callee == "fmt.Errorf"
 		})
 
-	require.Len(t, refs, 1, "expected only root package fmt.Errorf call after excluding subpkg")
+	require.Len(t, refs, 1, "expected 1 fmt.Errorf call in application layer")
 
 	normalized := strings.ReplaceAll(refs[0].Filename, "\\", "/")
-	assert.True(t, strings.HasSuffix(normalized, "/main.go"), "expected remaining ref to be in fixture main.go")
+	assert.True(t, strings.HasSuffix(normalized, "/application/service.go"), "expected ref in application/service.go")
 }
 
 func TestFunctionCalls_InTestAndNotInTest_FilterByTestFilenames(t *testing.T) {

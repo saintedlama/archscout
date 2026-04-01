@@ -5,6 +5,7 @@ import (
 	"go/token"
 
 	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/goarch/dependencies"
 
 	toolspackages "golang.org/x/tools/go/packages"
 )
@@ -22,6 +23,18 @@ type Item struct {
 	FileSet *token.FileSet
 	Files   []File
 	Errors  []toolspackages.Error
+	deps    dependencies.Collection
+}
+
+// Dependencies returns dependency entries originating from files in this package.
+func (item Item) Dependencies() dependencies.Collection {
+	return item.deps
+}
+
+// WithDependencies returns a copy of the item with the provided dependencies attached.
+func (item Item) WithDependencies(items []dependencies.Item) Item {
+	item.deps = dependencies.NewCollection(items)
+	return item
 }
 
 // MatchFunc is a function type that matches package entries.

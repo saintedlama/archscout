@@ -1,22 +1,21 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
 
-type Widget struct {
-	Name string
-}
+	"example.com/fixturemod/application"
+	"example.com/fixturemod/infrastructure"
+)
 
-var GlobalCounter = 1
+func main() {
+	repo := infrastructure.NewOrderRepository()
+	svc := &application.OrderService{}
 
-func RootErr() error {
-	if GlobalCounter > 0 {
-		switch GlobalCounter {
-		case 1:
-			GlobalCounter++
-		default:
-			GlobalCounter = 0
-		}
+	order, err := svc.PlaceOrder(1, 99.99)
+	if err != nil {
+		panic(err)
 	}
 
-	return fmt.Errorf("root error")
+	repo.Save(order)
+	fmt.Println("order placed:", order.ID)
 }

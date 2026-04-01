@@ -13,7 +13,7 @@ func TestVariables_MatchBuildsRefsFromPredicates(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
 	refs := workspace.Variables.Match(func(v variables.Item) bool {
-		return v.Name == "GlobalCounter"
+		return v.Name == "ErrNotFound"
 	})
 	require.Len(t, refs, 1, "expected 1 variable ref")
 

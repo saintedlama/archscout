@@ -4,6 +4,7 @@ import (
 	"go/ast"
 
 	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/goarch/dependencies"
 )
 
 // Item represents a parsed Go source file entry.
@@ -11,6 +12,18 @@ type Item struct {
 	Ref      common.Ref
 	Filename string
 	Node     *ast.File
+	deps     dependencies.Collection
+}
+
+// Dependencies returns dependency entries originating from this file.
+func (item Item) Dependencies() dependencies.Collection {
+	return item.deps
+}
+
+// WithDependencies returns a copy of the item with the provided dependencies attached.
+func (item Item) WithDependencies(items []dependencies.Item) Item {
+	item.deps = dependencies.NewCollection(items)
+	return item
 }
 
 // MatchFunc is a function type that matches file entries.

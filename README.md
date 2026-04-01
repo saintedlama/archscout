@@ -18,6 +18,7 @@ After loading a module, `goarch` builds top-level collections for:
 - Functions
 - Variables
 - Function calls
+- Dependencies
 
 Each collection supports a fluent `Match(...)` API that returns code refs with source references.
 Refs also carry a kind-specific match label and can be rendered with `FormatRef` or `FormatRefs`.
@@ -44,6 +45,7 @@ go get github.com/saintedlama/goarch
   - `workspace.MatchFunctions(...)`
   - `workspace.MatchVariables(...)`
   - `workspace.MatchFunctionCalls(...)`
+  - `workspace.MatchDependencies(...)`
 
 ## Rules
 

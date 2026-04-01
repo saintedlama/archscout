@@ -13,7 +13,7 @@ func TestTypes_MatchBuildsRefsFromPredicates(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
 	refs := workspace.Types.Match(func(typ types.Item) bool {
-		return typ.Name == "Widget"
+		return typ.Name == "Order"
 	})
 	require.Len(t, refs, 1, "expected 1 type ref")
 

@@ -8,9 +8,12 @@ import (
 	"go/printer"
 	"go/token"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/saintedlama/goarch/common"
+	"github.com/saintedlama/goarch/dependencies"
 	"github.com/saintedlama/goarch/files"
 	"github.com/saintedlama/goarch/functioncalls"
 	"github.com/saintedlama/goarch/functions"
@@ -30,6 +33,7 @@ type Workspace struct {
 	Functions     functions.Collection
 	Variables     variables.Collection
 	FunctionCalls functioncalls.Collection
+	Dependencies  dependencies.Collection
 }
 
 // Top-level aliases for convenient consumption from goarch package.
@@ -45,6 +49,7 @@ const (
 	RefKindFunction     = common.RefKindFunction
 	RefKindVariable     = common.RefKindVariable
 	RefKindFunctionCall = common.RefKindFunctionCall
+	RefKindDependency   = common.RefKindDependency
 )
 
 type Package = packages.Item
@@ -55,6 +60,7 @@ type Type = types.Item
 type Function = functions.Item
 type Variable = variables.Item
 type FunctionCall = functioncalls.Item
+type Dependency = dependencies.Item
 
 type PackageMatchFunc = packages.MatchFunc
 type FileMatchFunc = files.MatchFunc
@@ -62,6 +68,7 @@ type TypeMatchFunc = types.MatchFunc
 type FunctionMatchFunc = functions.MatchFunc
 type VariableMatchFunc = variables.MatchFunc
 type FunctionCallMatchFunc = functioncalls.MatchFunc
+type DependencyMatchFunc = dependencies.MatchFunc
 
 // DefaultRefFormatOptions returns the default ref formatting configuration.
 func DefaultRefFormatOptions() common.RefFormatOptions {
@@ -226,6 +233,11 @@ func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Works
 	}
 	report(fmt.Sprintf("Loaded %d package(s)", len(pkgs)))
 
+	workspacePackageIDs := make(map[string]struct{}, len(pkgs))
+	for _, pkg := range pkgs {
+		workspacePackageIDs[pkg.ID] = struct{}{}
+	}
+
 	workspace := workspacebuilder.New()
 	for _, pkg := range pkgs {
 		report(fmt.Sprintf("Analyzing %s...", pkg.ID))
@@ -260,6 +272,8 @@ func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Works
 				Node:     file,
 			})
 
+			indexFileDependencies(workspace, p, filename, file, workspacePackageIDs)
+
 			indexFileEntries(workspace, p, filename, file)
 		}
 
@@ -274,6 +288,7 @@ func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Works
 		Functions:     snapshot.Functions,
 		Variables:     snapshot.Variables,
 		FunctionCalls: snapshot.FunctionCalls,
+		Dependencies:  snapshot.Dependencies,
 	}, nil
 }
 
@@ -323,6 +338,14 @@ func (workspace *Workspace) MatchFunctionCalls(matcher FunctionCallMatchFunc) Re
 		return nil
 	}
 	return workspace.FunctionCalls.Match(matcher)
+}
+
+// MatchDependencies runs a matcher over all dependency entries and returns generated code refs.
+func (workspace *Workspace) MatchDependencies(matcher DependencyMatchFunc) Refs {
+	if workspace == nil || matcher == nil {
+		return nil
+	}
+	return workspace.Dependencies.Match(matcher)
 }
 
 func indexFileEntries(
@@ -381,6 +404,57 @@ func indexFileEntries(
 
 		return true
 	})
+}
+
+func indexFileDependencies(
+	workspace *workspacebuilder.Builder,
+	pkg packages.Item,
+	filename string,
+	file *ast.File,
+	workspacePackageIDs map[string]struct{},
+) {
+	if file == nil {
+		return
+	}
+
+	for _, importSpec := range file.Imports {
+		if importSpec == nil || importSpec.Path == nil {
+			continue
+		}
+
+		importPath, err := strconv.Unquote(importSpec.Path.Value)
+		if err != nil || importPath == "" {
+			continue
+		}
+
+		_, withinWorkspace := workspacePackageIDs[importPath]
+
+		workspace.AddDependency(dependencies.Item{
+			Ref:               newRef(pkg, filename, importSpec, common.RefKindDependency, dependencyMatchText(importPath, withinWorkspace)),
+			ImportPath:        importPath,
+			WithinWorkspace:   withinWorkspace,
+			External:          !withinWorkspace,
+			StandardLibrary:   !strings.Contains(importPath, "."),
+			TargetPackageName: importPackageName(importSpec),
+		})
+	}
+}
+
+func dependencyMatchText(importPath string, withinWorkspace bool) string {
+	target := "external"
+	if withinWorkspace {
+		target = "workspace"
+	}
+
+	return "dependency " + importPath + " (" + target + ")"
+}
+
+func importPackageName(importSpec *ast.ImportSpec) string {
+	if importSpec == nil || importSpec.Name == nil {
+		return ""
+	}
+
+	return importSpec.Name.Name
 }
 
 func newRef(pkg packages.Item, fallbackFilename string, n ast.Node, kind common.RefKind, match string) common.Ref {

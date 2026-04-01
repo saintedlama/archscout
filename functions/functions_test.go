@@ -13,7 +13,7 @@ func TestFunctions_MatchBuildsRefsFromPredicates(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
 	refs := workspace.Functions.Match(func(fn functions.Item) bool {
-		return fn.Name == "RootErr"
+		return fn.Name == "NewOrder"
 	})
 	require.Len(t, refs, 1, "expected 1 function ref")
 
