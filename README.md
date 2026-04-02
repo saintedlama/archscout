@@ -1,4 +1,4 @@
-# archscout
+# ![archscout logo](./assets/logo.png) ArchScout
 
 `archscout` helps you keep architecture visible and enforceable in Go codebases.
 
