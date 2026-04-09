@@ -58,6 +58,8 @@ func TestDomainDoesNotDependOnInfrastructure(t *testing.T) {
 ### 1. Explore a codebase
 
 ```go
+import "github.com/saintedlama/archscout"
+
 refs := workspace.FunctionCalls.
   InPackage("github.com/your-project/...").
   IsNotTest().
@@ -69,6 +71,8 @@ refs := workspace.FunctionCalls.
 ### 2. Validate architecture with reusable rules
 
 ```go
+import "github.com/saintedlama/archscout"
+
 forbidden := map[string]bool{"panic": true, "os.Exit": true}
 
 rule := archscout.Rule("panic and os.Exit forbidden in library code").
@@ -89,6 +93,8 @@ Use `ShouldExist()` on `Packages`, `Types`, and `Functions` rules to assert that
 least one entry survives the filter chain. Combine with `Match` to pin a specific item:
 
 ```go
+import "github.com/saintedlama/archscout"
+
 archscout.Rule("domain package must exist").
   Packages().
   InPackage("github.com/your-project/domain").
@@ -108,6 +114,8 @@ archscout.Rule("Repository interface must be defined in domain").
 Dependency checks can be done directly or through files/packages.
 
 ```go
+import "github.com/saintedlama/archscout"
+
 rule := archscout.Rule("files with no stdlib deps").
   Files().
   Match(func(file archscout.File) bool {
@@ -125,6 +133,12 @@ Three aggregation helpers make it easy to answer high-level questions without
 counting raw import statements:
 
 ```go
+import (
+  "fmt"
+
+  "github.com/saintedlama/archscout"
+)
+
 mod := archscout.Module("github.com/your-project")
 
 // What does the UI layer reach (workspace-internal, non-test)?
@@ -153,6 +167,8 @@ for pkg, deps := range workspace.Dependencies.IsNotTest().IsWithinWorkspace().Gr
 Use `Module` to avoid repeating the module path across patterns:
 
 ```go
+import "github.com/saintedlama/archscout"
+
 mod := archscout.Module("github.com/your-project")
 
 archscout.Rule("ui/common must not depend on other internal packages").
@@ -210,13 +226,78 @@ Dependencies additionally support:
 | `UniqueTargets()`            | Sorted, deduplicated import paths in the collection       |
 | `UniqueSourcePackages()`     | Sorted, deduplicated source package IDs in the collection |
 | `GroupBySourcePackage()`     | Partitions into one sub-collection per source package     |
+| `GroupByTargetPackage()`     | Partitions into one sub-collection per imported package   |
 | `Tree()`                     | Builds a hierarchical `TreeNode` from import paths        |
+
+### 7. Build and query the transitive package graph
+
+`BuildPackageGraph` converts a dependency collection into a directed graph that
+supports transitive reachability queries. It only considers workspace-internal
+imports, so filter the collection first if needed:
+
+```go
+import "github.com/saintedlama/archscout"
+
+mod := archscout.Module("github.com/your-project")
+
+graph := archscout.BuildPackageGraph(
+    workspace.Dependencies.IsNotTest().IsWithinWorkspace(),
+)
+
+// All workspace packages in the graph
+pkgs := graph.Packages()
+
+// Direct imports of the application layer
+direct := graph.DirectDependencies(mod.Pkg("application/..."))
+
+// Everything reachable (any number of hops) from the UI layer
+all := graph.TransitiveDependencies(mod.Pkg("ui/..."))
+
+// Does domain ever (transitively) reach infrastructure?
+if graph.TransitivelyReaches(
+    []string{mod.Pkg("domain/...")},
+    []string{mod.Pkg("infrastructure/...")},
+) {
+    t.Error("domain must not depend on infrastructure")
+}
+
+// Single-hop version of the same check
+if graph.DirectlyReaches(
+    []string{mod.Pkg("application/...")},
+    []string{mod.Pkg("infrastructure/...")},
+) {
+    t.Error("application must not directly import infrastructure")
+}
+
+// Who imports the domain layer?
+importers := graph.Importers(mod.Pkg("domain/..."))
+// → ["github.com/your-project/application", "github.com/your-project/ui/tracker"]
+```
+
+`PackageGraph` methods:
+
+| Method                                          | Description                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------ |
+| `Packages()`                                    | Sorted set of all package IDs (sources and targets)                |
+| `DirectDependencies(patterns...)`               | Packages directly imported by packages matching patterns           |
+| `TransitiveDependencies(patterns...)`           | All packages reachable via one or more hops from matching packages |
+| `TransitivelyReaches(fromPatterns, toPatterns)` | Reports whether any matching source can reach any matching target  |
+| `DirectlyReaches(fromPatterns, toPatterns)`     | Same as above but only considers single-hop edges                  |
+| `Importers(patterns...)`                        | Packages that directly import any package matching patterns        |
+
+All methods support the `/...` glob convention.
 
 ## Refs and Formatting
 
 Rule violations are returned as `Refs` — each `Ref` identifies a source location:
 
 ```go
+import (
+  "fmt"
+
+  "github.com/saintedlama/archscout"
+)
+
 refs, err := rule.Evaluate(workspace)
 fmt.Println(archscout.FormatRefs(refs))
 
@@ -238,6 +319,7 @@ Available format options: `WithRefPackage()`, `WithRefKind()`, `WithoutRefFile()
 - `WithReporter(func(string)) LoadWorkspaceOption` — progress callback
 - `WithInMemoryCache() LoadWorkspaceOption` — reuse a loaded workspace within the process
 - `Module(path)` — helper for building fully-qualified package patterns
+- `BuildPackageGraph(c dependencies.Collection) *PackageGraph` — builds a transitive package graph from a dependency collection
 - `Rule(name)` — entry point for all rule construction
 
 Rule types expose:
@@ -253,6 +335,7 @@ Rule types expose:
 ```bash
 make fmt
 make vet
+make lint
 make build
 make test-verbose
 ```

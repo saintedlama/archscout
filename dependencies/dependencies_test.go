@@ -156,11 +156,25 @@ func TestDependencies_GroupBySourcePackage_PartitionsIntoPerPackageCollections(t
 	assert.Equal(t, []string{"myapp/domain"}, groups["myapp/application"].UniqueTargets())
 }
 
-func TestDependencies_GroupBySourcePackage_CombinesWithDependOnForReverseQuery(t *testing.T) {
+func TestDependencies_GroupByTargetPackage_PartitionsIntoPerTargetCollections(t *testing.T) {
 	c := makeExplorationCollection()
 
-	// Who imports myapp/domain?
-	sources := c.DependOn("myapp/domain").UniqueSourcePackages()
+	groups := c.GroupByTargetPackage()
+
+	require.Len(t, groups, 2)
+	assert.ElementsMatch(t,
+		[]string{"myapp/ui/tracker", "myapp/ui/synth", "myapp/application"},
+		groups["myapp/domain"].UniqueSourcePackages(),
+	)
+	assert.Equal(t, []string{"myapp/ui/tracker"}, groups["myapp/audio"].UniqueSourcePackages())
+}
+
+func TestDependencies_GroupByTargetPackage_CombinesWithUniqueSourcePackagesForReverseQuery(t *testing.T) {
+	c := makeExplorationCollection()
+
+	// Symmetric with the DependOn + UniqueSourcePackages pattern.
+	byTarget := c.GroupByTargetPackage()
+	sources := byTarget["myapp/domain"].UniqueSourcePackages()
 
 	assert.Equal(t, []string{"myapp/application", "myapp/ui/synth", "myapp/ui/tracker"}, sources)
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/saintedlama/archscout/files"
 	"github.com/saintedlama/archscout/functioncalls"
 	"github.com/saintedlama/archscout/functions"
+	"github.com/saintedlama/archscout/packagegraph"
 	"github.com/saintedlama/archscout/packages"
 	"github.com/saintedlama/archscout/types"
 	"github.com/saintedlama/archscout/variables"
@@ -69,6 +70,19 @@ type FunctionMatchFunc = functions.MatchFunc
 type VariableMatchFunc = variables.MatchFunc
 type FunctionCallMatchFunc = functioncalls.MatchFunc
 type DependencyMatchFunc = dependencies.MatchFunc
+
+// PackageGraph is a directed graph of workspace-internal package dependencies.
+// See packagegraph.PackageGraph for the full API.
+type PackageGraph = packagegraph.PackageGraph
+
+// BuildPackageGraph constructs a PackageGraph from the workspace's dependency
+// collection. Only workspace-internal edges are included; filter the collection
+// before calling if you want to exclude test files or other dependencies:
+//
+//	graph := archscout.BuildPackageGraph(ws.Dependencies.IsNotTest())
+func BuildPackageGraph(c dependencies.Collection) *PackageGraph {
+	return packagegraph.BuildGraph(c)
+}
 
 // Module is a Go module path that can generate fully-qualified package patterns
 // without repeated string concatenation.

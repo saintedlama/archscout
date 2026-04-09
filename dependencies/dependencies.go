@@ -359,3 +359,28 @@ func (c Collection) GroupBySourcePackage() map[string]Collection {
 	}
 	return result
 }
+
+// GroupByTargetPackage partitions the collection into one sub-collection per import
+// path (the package being imported). The returned map key is the import path.
+//
+// Useful for answering "who imports package X?":
+//
+//	for src, deps := range ws.Dependencies.IsWithinWorkspace().GroupByTargetPackage()["myapp/domain"] {
+//	    _ = src
+//	    _ = deps
+//	}
+//
+// Or more directly combined with UniqueSourcePackages:
+//
+//	ws.Dependencies.IsWithinWorkspace().GroupByTargetPackage()[mod.Pkg("domain")].UniqueSourcePackages()
+func (c Collection) GroupByTargetPackage() map[string]Collection {
+	groups := make(map[string][]Item)
+	for _, item := range c.items {
+		groups[item.ImportPath] = append(groups[item.ImportPath], item)
+	}
+	result := make(map[string]Collection, len(groups))
+	for target, items := range groups {
+		result[target] = Collection{items: items}
+	}
+	return result
+}
