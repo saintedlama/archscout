@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/saintedlama/archscout/compare/v1.3.0...v1.4.0) (2026-04-09)
+
+
+### Features
+
+* add filtering methods for exported/unexported types, functions, and variables; enhance collection capabilities with regex matching ([fdcbf86](https://github.com/saintedlama/archscout/commit/fdcbf86ec2d5d8e6e4c965827423904ce054e222))
+* add PackageGraph for managing workspace-internal package dependencies; implement related methods and tests ([0668179](https://github.com/saintedlama/archscout/commit/06681795df4f97ca304e24d1a2bfa47cbfbff48c))
+
 ## [1.3.0](https://github.com/saintedlama/archscout/compare/v1.2.0...v1.3.0) (2026-04-09)
 
 
