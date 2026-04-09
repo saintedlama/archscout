@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/saintedlama/archscout/compare/v1.1.0...v1.2.0) (2026-04-09)
+
+
+### Features
+
+* add Module type for generating fully-qualified package patterns and enhance rule evaluation with existence checks ([3bb9967](https://github.com/saintedlama/archscout/commit/3bb9967ef7c52e308c12c46d2685cf769db41e5c))
+
 ## [1.1.0](https://github.com/saintedlama/goarch/compare/v1.0.0...v1.1.0) (2026-04-01)
 
 
