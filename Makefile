@@ -1,5 +1,8 @@
 .PHONY: lint vet build test-verbose
 
+lint:
+	staticcheck ./...
+
 vet:
 	go vet ./...
 
