@@ -20,6 +20,48 @@ Examples:
 
 When a rule is violated, you get source refs you can print in test failures.
 
+## Why use Archscout
+
+Most Go architecture tools focus on a narrow slice of the problem: check a dependency, enforce a layer rule, done. Archscout is different in four important ways.
+
+### 1. Explore first, enforce second
+
+Understanding a codebase matters as much as policing it. Archscout ships exploration helpers — `UniqueTargets()`, `UniqueSourcePackages()`, `GroupBySourcePackage()`, `GroupByTargetPackage()` — designed for asking questions like "who imports my domain layer?" or "what does the UI layer actually reach?" Most tools give you a pass/fail assertion. Archscout also gives you the map.
+
+### 2. Seven collections, one mental model
+
+Every code element — packages, files, types, functions, variables, function calls, and raw import dependencies — is a filterable, chainable collection with the same API. You don't learn a separate DSL per check. You learn `InPackage`, `IsNotTest`, `Match` once and apply them everywhere. Checking for `panic` calls uses exactly the same pattern as checking dependency boundaries.
+
+### 3. Transitive graph analysis
+
+Archscout builds a proper directed dependency graph with `BuildPackageGraph`, letting you ask transitive questions: does the domain layer _ever_ reach infrastructure, through any number of hops? Which packages are reachable from the UI layer? Who (directly or transitively) imports the domain? Other tools check direct edges only.
+
+### 4. No boilerplate, no configuration
+
+Load a workspace, write a Go test function, call `.Test(t, workspace)`. No layer definitions to register upfront, no config files, no parsing phases to manage manually. Rules are plain Go values — they compose, they can be shared across test files, and they live exactly where your tests live.
+
+### 5. The AST is yours
+
+Archscout is a thin layer over Go's own analysis tooling — it doesn't hide the underlying code model behind opaque abstractions. Every `Match` predicate receives a real typed value (`Type`, `Function`, `Variable`, `FunctionCall`, `Dependency`) that you can inspect with plain Go code. If the built-in filters don't cover your case, you reach into the item directly:
+
+```go
+import "github.com/saintedlama/archscout"
+
+// Find all exported functions whose name starts with "New" but have no receiver —
+// a check no built-in rule needs to exist for.
+refs := workspace.Functions.
+  InPackage("github.com/your-project/...").
+  IsNotTest().
+  Match(func(f archscout.Function) bool {
+    return len(f.Name) >= 3 &&
+      f.Name[:3] == "New" &&
+      f.Receiver == "" &&
+      f.Name[0] >= 'A' && f.Name[0] <= 'Z'
+  })
+```
+
+There is no "escape hatch" needed — the item **is** the data. This makes archscout equally useful for ad-hoc exploration and for hardening automation that runs in CI.
+
 ## Install
 
 ```bash
