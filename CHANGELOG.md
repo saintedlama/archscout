@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/saintedlama/archscout/compare/v1.2.0...v1.3.0) (2026-04-09)
+
+
+### Features
+
+* add unique targets and source packages methods for dependency collections ([14e9d8c](https://github.com/saintedlama/archscout/commit/14e9d8cd22ec36ad2a8fe0c3e5fcae86286a685e))
+
 ## [1.2.0](https://github.com/saintedlama/archscout/compare/v1.1.0...v1.2.0) (2026-04-09)
 
 
