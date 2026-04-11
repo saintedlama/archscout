@@ -149,6 +149,27 @@ func (c Collection) Match(matcher MatchFunc) common.Refs {
 	return refs
 }
 
+// GroupBy partitions the collection into sub-collections keyed by the return
+// value of key. Items for which key returns an empty string are silently
+// dropped. The returned map is never nil.
+func (c Collection) GroupBy(key func(Item) string) map[string]Collection {
+	groups := make(map[string][]Item)
+	for _, item := range c.items {
+		k := key(item)
+		if k == "" {
+			continue
+		}
+		groups[k] = append(groups[k], item)
+	}
+
+	result := make(map[string]Collection, len(groups))
+	for k, items := range groups {
+		result[k] = Collection{items: items}
+	}
+
+	return result
+}
+
 func packageRef(item Item) common.Ref {
 	ref := common.Ref{
 		PackageID:   item.ID,
