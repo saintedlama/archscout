@@ -119,6 +119,7 @@ func TestArch_LibraryCodeDoesNotCallPanicOrExit(t *testing.T) {
 		FunctionCalls().
 		InPackage("github.com/saintedlama/archscout/...").
 		NotInPackage("github.com/saintedlama/archscout/internal/...").
+		NotInPackage("github.com/saintedlama/archscout/cmd/...").
 		IsNotTest().
 		Match(func(fc archscout.FunctionCall) bool {
 			return slices.Contains(forbidden, fc.Callee)

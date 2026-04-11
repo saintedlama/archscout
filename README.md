@@ -271,7 +271,40 @@ Dependencies additionally support:
 | `GroupByTargetPackage()`     | Partitions into one sub-collection per imported package   |
 | `Tree()`                     | Builds a hierarchical `TreeNode` from import paths        |
 
-### 7. Build and query the transitive package graph
+### 7. Speed up repeated loads with a disk cache
+
+Enable disk cache to make repeated `LoadWorkspace` calls much faster on large
+codebases, especially when exploring them interactively. Cache entries are
+invalidated automatically when `.go` files or `go.sum` change.
+
+Use zero-config caching:
+
+```go
+import (
+  "context"
+
+  "github.com/saintedlama/archscout"
+)
+
+workspace, err := archscout.LoadWorkspace(
+    context.Background(), ".",
+    archscout.WithDiskCache(),
+    archscout.WithReporter(func(msg string) { fmt.Println(msg) }),
+)
+```
+
+Use `WithDiskCacheDir(dir)` when you need an explicit location (for example in CI):
+
+```go
+workspace, err := archscout.LoadWorkspace(
+    context.Background(), ".",
+    archscout.WithDiskCacheDir("/tmp/my-project-cache"),
+)
+```
+
+> **Note:** After loading from disk cache, AST `Node` fields are `nil`. Normal filters and rule checks continue to work.
+
+### 8. Build and query the transitive package graph
 
 `BuildPackageGraph` converts a dependency collection into a directed graph that
 supports transitive reachability queries. It only considers workspace-internal
@@ -360,6 +393,8 @@ Available format options: `WithRefPackage()`, `WithRefKind()`, `WithoutRefFile()
 - `LoadWorkspace(ctx, dir, opts...) (*Workspace, error)`
 - `WithReporter(func(string)) LoadWorkspaceOption` — progress callback
 - `WithInMemoryCache() LoadWorkspaceOption` — reuse a loaded workspace within the process
+- `WithDiskCache() LoadWorkspaceOption` — persist a workspace snapshot in the platform-default cache directory
+- `WithDiskCacheDir(dir string) LoadWorkspaceOption` — persist a workspace snapshot in an explicit directory
 - `Module(path)` — helper for building fully-qualified package patterns
 - `BuildPackageGraph(c dependencies.Collection) *PackageGraph` — builds a transitive package graph from a dependency collection
 - `Rule(name)` — entry point for all rule construction
@@ -387,6 +422,15 @@ make test-verbose
 - `LoadWorkspace` expects a Go module directory with `go.mod`.
 - `WithReporter(...)` is optional and useful for progress output.
 - `WithInMemoryCache()` is optional and reuses a loaded workspace by path.
+- `WithDiskCache()` is optional; stores cache files in `os.UserCacheDir()/archscout`
+  (falls back to `os.TempDir()/archscout-cache`). Different projects sharing the
+  same cache directory never collide because the absolute project path is part of
+  the fingerprint hash.
+- `WithDiskCacheDir(dir)` is optional; identical to `WithDiskCache()` but lets
+  you control exactly where cache files are written.
+- On a cache hit, go/ast `Node` fields (`Function.Node`, `Type.Node`, etc.) are
+  `nil`. All string-based queries, filter chains, and rule checks work normally;
+  only custom predicates that dereference the raw AST pointer are affected.
 - Pattern matching: a pattern ending in `/...` matches the base path and all sub-paths.
 
 ## License

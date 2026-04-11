@@ -200,6 +200,8 @@ func FormatRefs(refs Refs, opts ...RefFormatOption) string {
 type loadWorkspaceOptions struct {
 	reporter      func(string)
 	inMemoryCache bool
+	diskCache     bool   // true when WithDiskCache() (auto dir) is used
+	diskCacheDir  string // explicit dir from WithDiskCacheDir
 }
 
 type workspaceCacheState struct {
@@ -234,6 +236,34 @@ func WithInMemoryCache() LoadWorkspaceOption {
 	}
 }
 
+// WithDiskCache enables a file-system cache stored in the platform-default
+// cache directory (os.UserCacheDir()/archscout, or os.TempDir()/archscout-cache
+// as a fallback). The project's absolute path is mixed into the fingerprint
+// hash so two different projects sharing the same cache directory never collide.
+//
+// On the first load the workspace is serialized to a gob file whose name is a
+// SHA256 fingerprint of all .go source files and go.sum under the project
+// directory. Subsequent loads that find a matching fingerprint skip the
+// expensive go/packages parse and reconstruction entirely.
+//
+// Note: go/ast Node fields (Type.Node, Function.Node, etc.) are nil when a
+// workspace is loaded from the disk cache because AST pointers cannot be
+// serialized. All string-based queries and rule checks work as normal.
+func WithDiskCache() LoadWorkspaceOption {
+	return func(opts *loadWorkspaceOptions) {
+		opts.diskCache = true
+	}
+}
+
+// WithDiskCacheDir enables a file-system cache stored in the given directory.
+// Behaviour is identical to WithDiskCache() except the caller controls where
+// cache files are written.
+func WithDiskCacheDir(dir string) LoadWorkspaceOption {
+	return func(opts *loadWorkspaceOptions) {
+		opts.diskCacheDir = dir
+	}
+}
+
 // LoadWorkspace loads all packages in dir and returns a workspace.
 func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption) (*Workspace, error) {
 	options := &loadWorkspaceOptions{}
@@ -247,6 +277,14 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 		if options.reporter != nil {
 			options.reporter(msg)
 		}
+	}
+
+	// Resolve effective disk cache directory.
+	// WithDiskCacheDir takes precedence; WithDiskCache() falls back to the
+	// platform default directory.
+	effectiveCacheDir := options.diskCacheDir
+	if effectiveCacheDir == "" && options.diskCache {
+		effectiveCacheDir = defaultCacheDir()
 	}
 
 	if options.inMemoryCache {
@@ -267,7 +305,7 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 		workspaceCache.entries[cacheKey] = entry
 		workspaceCache.mu.Unlock()
 
-		workspace, err := loadWorkspace(ctx, dir, report)
+		workspace, err := loadWithDiskCache(ctx, dir, effectiveCacheDir, report)
 		if err != nil {
 			workspaceCache.mu.Lock()
 			delete(workspaceCache.entries, cacheKey)
@@ -284,10 +322,10 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 		return workspace, nil
 	}
 
-	return loadWorkspace(ctx, dir, report)
+	return loadWithDiskCache(ctx, dir, effectiveCacheDir, report)
 }
 
-func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Workspace, error) {
+func parseWorkspace(ctx context.Context, dir string, report func(string)) (*Workspace, error) {
 	cfg := &toolspackages.Config{
 		Dir: dir,
 		Mode: toolspackages.NeedName | toolspackages.NeedFiles |
