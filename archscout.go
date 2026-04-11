@@ -16,7 +16,7 @@ import (
 	"github.com/saintedlama/archscout/common"
 	"github.com/saintedlama/archscout/dependencies"
 	"github.com/saintedlama/archscout/files"
-	"github.com/saintedlama/archscout/functioncall"
+	"github.com/saintedlama/archscout/functioncalls"
 	"github.com/saintedlama/archscout/functions"
 	"github.com/saintedlama/archscout/packagegraph"
 	"github.com/saintedlama/archscout/packages"
@@ -281,7 +281,7 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 
 func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Workspace, error) {
 	cfg := &toolspackages.Config{
-		Dir:  dir,
+		Dir: dir,
 		Mode: toolspackages.NeedName | toolspackages.NeedFiles |
 			toolspackages.NeedSyntax |
 			toolspackages.NeedCompiledGoFiles |
