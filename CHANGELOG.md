@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/saintedlama/archscout/compare/v1.4.0...v1.5.0) (2026-04-11)
+
+
+### Features
+
+* add Workspace.ModuleRoot() and packages.Collection.GroupBy() ([#6](https://github.com/saintedlama/archscout/issues/6)) ([3cbc7cc](https://github.com/saintedlama/archscout/commit/3cbc7ccd411cb06677282e2d29fe91095bb0eba9))
+
 ## [1.4.0](https://github.com/saintedlama/archscout/compare/v1.3.0...v1.4.0) (2026-04-09)
 
 
