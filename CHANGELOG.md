@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/saintedlama/archscout/compare/v1.5.0...v1.5.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* ModuleRoot trims too far when root package ID is lexically shortest ([a6070b0](https://github.com/saintedlama/archscout/commit/a6070b025b9c807bafa73052d90fe344be12e86f))
+
 ## [1.5.0](https://github.com/saintedlama/archscout/compare/v1.4.0...v1.5.0) (2026-04-11)
 
 
