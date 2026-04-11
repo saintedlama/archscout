@@ -8,6 +8,7 @@ import (
 	"go/printer"
 	"go/token"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,7 +16,7 @@ import (
 	"github.com/saintedlama/archscout/common"
 	"github.com/saintedlama/archscout/dependencies"
 	"github.com/saintedlama/archscout/files"
-	"github.com/saintedlama/archscout/functioncalls"
+	"github.com/saintedlama/archscout/functioncall"
 	"github.com/saintedlama/archscout/functions"
 	"github.com/saintedlama/archscout/packagegraph"
 	"github.com/saintedlama/archscout/packages"
@@ -82,6 +83,33 @@ type PackageGraph = packagegraph.PackageGraph
 //	graph := archscout.BuildPackageGraph(ws.Dependencies.IsNotTest())
 func BuildPackageGraph(c dependencies.Collection) *PackageGraph {
 	return packagegraph.BuildGraph(c)
+}
+
+// ModuleRoot derives the module root (e.g. "github.com/myorg/myapp") from the
+// longest common import-path prefix shared by all packages in the workspace.
+// It returns an empty string if the workspace contains no packages.
+func (ws *Workspace) ModuleRoot() string {
+	pkgs := ws.Packages.All()
+	if len(pkgs) == 0 {
+		return ""
+	}
+
+	ids := make([]string, len(pkgs))
+	for i, p := range pkgs {
+		ids[i] = p.ID
+	}
+	sort.Strings(ids)
+
+	a, b := ids[0], ids[len(ids)-1]
+	i := 0
+	for i < len(a) && i < len(b) && a[i] == b[i] {
+		i++
+	}
+	prefix := a[:i]
+	if j := strings.LastIndex(prefix, "/"); j >= 0 {
+		prefix = prefix[:j]
+	}
+	return prefix
 }
 
 // Module is a Go module path that can generate fully-qualified package patterns
@@ -253,9 +281,11 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 
 func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Workspace, error) {
 	cfg := &toolspackages.Config{
-		Dir: dir,
-		Mode: toolspackages.NeedName | toolspackages.NeedFiles | toolspackages.NeedSyntax |
-			toolspackages.NeedCompiledGoFiles | toolspackages.NeedImports,
+		Dir:  dir,
+		Mode: toolspackages.NeedName | toolspackages.NeedFiles |
+			toolspackages.NeedSyntax |
+			toolspackages.NeedCompiledGoFiles |
+			toolspackages.NeedImports,
 		Context: ctx,
 	}
 
@@ -495,6 +525,7 @@ func importPackageName(importSpec *ast.ImportSpec) string {
 
 func newRef(pkg packages.Item, fallbackFilename string, n ast.Node, kind common.RefKind, match string) common.Ref {
 	pos := pkg.FileSet.PositionFor(n.Pos(), true)
+
 	filename := fallbackFilename
 	if pos.Filename != "" {
 		filename = pos.Filename
