@@ -16,7 +16,7 @@ import (
 	"github.com/saintedlama/archscout/common"
 	"github.com/saintedlama/archscout/dependencies"
 	"github.com/saintedlama/archscout/files"
-	"github.com/saintedlama/archscout/functioncalls"
+	"github.com/saintedlama/archscout/functioncall"
 	"github.com/saintedlama/archscout/functions"
 	"github.com/saintedlama/archscout/packagegraph"
 	"github.com/saintedlama/archscout/packages"
@@ -106,8 +106,16 @@ func (ws *Workspace) ModuleRoot() string {
 		i++
 	}
 	prefix := a[:i]
-	if j := strings.LastIndex(prefix, "/"); j >= 0 {
-		prefix = prefix[:j]
+
+	// Only trim back to the last '/' when the common prefix cuts mid-segment.
+	// When i == len(a), 'a' itself is a complete import path and is already
+	// a clean path boundary (e.g. "code.gitea.io/gitea" is a prefix of all
+	// sub-packages). Trimming in that case would incorrectly drop the last
+	// meaningful segment.
+	if i < len(a) {
+		if j := strings.LastIndex(prefix, "/"); j >= 0 {
+			prefix = prefix[:j]
+		}
 	}
 	return prefix
 }
@@ -281,7 +289,7 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 
 func loadWorkspace(ctx context.Context, dir string, report func(string)) (*Workspace, error) {
 	cfg := &toolspackages.Config{
-		Dir: dir,
+		Dir:  dir,
 		Mode: toolspackages.NeedName | toolspackages.NeedFiles |
 			toolspackages.NeedSyntax |
 			toolspackages.NeedCompiledGoFiles |
