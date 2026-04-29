@@ -26,3 +26,6 @@ vendor/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Agent Stuff
+.claude/
