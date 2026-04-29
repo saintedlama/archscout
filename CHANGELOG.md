@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/saintedlama/archscout/compare/v1.5.1...v1.6.0) (2026-04-29)
+
+
+### Features
+
+* add disk cache option for exploring large codebases ([c2bdcd5](https://github.com/saintedlama/archscout/commit/c2bdcd59d374b0d270b43b00e500a76d132b7f54))
+* type analysis ([#10](https://github.com/saintedlama/archscout/issues/10)) ([9cdef1f](https://github.com/saintedlama/archscout/commit/9cdef1ffe24e4f7909d672c6afed52447f2e07e3))
+
+
+### Bug Fixes
+
+* correct package import ([57062af](https://github.com/saintedlama/archscout/commit/57062afac747c136e667d24f218b5413075de99d))
+
 ## [1.5.1](https://github.com/saintedlama/archscout/compare/v1.5.0...v1.5.1) (2026-04-11)
 
 
