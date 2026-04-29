@@ -9,9 +9,22 @@ import (
 )
 
 // Item represents a function or method declaration entry.
+//
+// QName is the canonical fully-qualified name composed by archscout from
+// the package import path, the receiver's named type (if any), and the
+// function name:
+//
+//	plain function:  "<importpath>.<Name>"
+//	method:          "<importpath>.<RecvType>.<Name>"  (pointer indirection on the receiver is stripped)
+//
+// QName is always populated. It's the join key for cross-collection
+// references: callees in functioncalls.Item.CalleeQName, methods listed
+// in types.Item.Methods, and callers stored in
+// functioncalls.Item.CallerQName all match this string.
 type Item struct {
 	Ref      common.Ref
 	Name     string
+	QName    string
 	Receiver string
 	Node     *ast.FuncDecl
 }

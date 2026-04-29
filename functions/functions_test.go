@@ -23,6 +23,35 @@ func TestFunctions_MatchBuildsRefsFromPredicates(t *testing.T) {
 	}
 }
 
+func TestFunctions_QName_ComposedForFunctionsAndMethods(t *testing.T) {
+	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
+
+	var sawNewOrder, sawPlaceOrder, sawSave bool
+	for _, fn := range workspace.Functions.All() {
+		switch fn.Name {
+		case "NewOrder": // plain function in domain pkg
+			sawNewOrder = true
+			assert.Equal(t, "example.com/fixturemod/domain.NewOrder", fn.QName)
+			assert.Empty(t, fn.Receiver, "NewOrder is a plain function")
+		case "PlaceOrder": // pointer-receiver method
+			sawPlaceOrder = true
+			assert.Equal(t,
+				"example.com/fixturemod/application.OrderService.PlaceOrder",
+				fn.QName,
+				"pointer indirection on the receiver must be stripped")
+			assert.Equal(t, "*OrderService", fn.Receiver)
+		case "Save": // value-receiver method on the postgres impl... actually pointer
+			sawSave = true
+			assert.Equal(t,
+				"example.com/fixturemod/infrastructure.OrderRepository.Save",
+				fn.QName)
+		}
+	}
+	assert.True(t, sawNewOrder, "expected NewOrder")
+	assert.True(t, sawPlaceOrder, "expected PlaceOrder")
+	assert.True(t, sawSave, "expected Save")
+}
+
 func TestFunctions_IsMethod_ReturnsOnlyMethods(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 

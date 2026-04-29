@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
+	gotypes "go/types"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"github.com/saintedlama/archscout/files"
 	"github.com/saintedlama/archscout/functioncalls"
 	"github.com/saintedlama/archscout/functions"
+	"github.com/saintedlama/archscout/implementsgraph"
 	"github.com/saintedlama/archscout/packagegraph"
 	"github.com/saintedlama/archscout/packages"
 	"github.com/saintedlama/archscout/types"
@@ -36,6 +38,24 @@ type Workspace struct {
 	Variables     variables.Collection
 	FunctionCalls functioncalls.Collection
 	Dependencies  dependencies.Collection
+	// TODO: this feels awkward here, should we move someplace else or rename?
+	// typed holds resolved go/types packages for every workspace-internal
+	// package. Populated only when LoadWorkspace was called with
+	// WithTypeInfo(); nil otherwise (and after a disk-cache hit, since type
+	// information is not serialized). Consumers reach this through
+	// TypedPackages().
+	typed []*gotypes.Package
+}
+
+// TypedPackages returns the slice of resolved go/types packages indexed by
+// the workspace. Returns nil when the workspace was loaded without
+// WithTypeInfo() or restored from a disk cache.
+// The slice is shared with the workspace; callers must not mutate it.
+func (ws *Workspace) TypedPackages() []*gotypes.Package {
+	if ws == nil {
+		return nil
+	}
+	return ws.typed
 }
 
 // Top-level aliases for convenient consumption from archscout package.
@@ -83,6 +103,26 @@ type PackageGraph = packagegraph.PackageGraph
 //	graph := archscout.BuildPackageGraph(ws.Dependencies.IsNotTest())
 func BuildPackageGraph(c dependencies.Collection) *PackageGraph {
 	return packagegraph.BuildGraph(c)
+}
+
+// ImplementsGraph stores interface-implementation edges over the workspace's resolved go/types packages.
+type ImplementsGraph = implementsgraph.Graph
+
+// BuildImplementsGraph constructs an ImplementsGraph from the workspace's
+// resolved type information. Returns an empty graph when the workspace was
+// loaded without WithTypeInfo() (or restored from a disk cache, which does
+// not preserve type information):
+//
+//	ws, _ := archscout.LoadWorkspace(ctx, ".", archscout.WithTypeInfo())
+//	graph := archscout.BuildImplementsGraph(ws)
+//	for _, qname := range graph.Implementers("example.com/api.Greeter") {
+//	    fmt.Println(qname)
+//	}
+func BuildImplementsGraph(ws *Workspace) *ImplementsGraph {
+	if ws == nil {
+		return implementsgraph.Build(nil)
+	}
+	return implementsgraph.Build(ws.typed)
 }
 
 // ModuleRoot derives the module root (e.g. "github.com/myorg/myapp") from the
@@ -202,6 +242,7 @@ type loadWorkspaceOptions struct {
 	inMemoryCache bool
 	diskCache     bool   // true when WithDiskCache() (auto dir) is used
 	diskCacheDir  string // explicit dir from WithDiskCacheDir
+	typeInfo      bool   // true when WithTypeInfo() is used
 }
 
 type workspaceCacheState struct {
@@ -264,6 +305,32 @@ func WithDiskCacheDir(dir string) LoadWorkspaceOption {
 	}
 }
 
+// WithTypeInfo enables loading of full Go type information by extending the
+// underlying go/packages load mode with NeedTypes and NeedTypesInfo. When
+// enabled, the workspace populates resolved-callee fields on every
+// FunctionCall:
+//
+//   - CalleePackage — import path of the package that defines the callee
+//   - CalleeQName   — fully-qualified name (e.g. "example.com/pkg.Service.Run"
+//     for methods or "example.com/pkg.New" for functions)
+//   - CalleeIsMethod — true for method calls
+//
+// Without this option the same fields remain empty; only the syntactic
+// Callee string is available.
+//
+// Type-info loading is significantly more expensive than the default mode
+// (typically 2-3x slower and substantially more memory hungry on large
+// workspaces). Enable it only when the resolved data is needed.
+//
+// The disk cache fingerprints type-info loads separately from default loads,
+// so toggling this option will not return stale, partially-populated
+// workspaces.
+func WithTypeInfo() LoadWorkspaceOption {
+	return func(opts *loadWorkspaceOptions) {
+		opts.typeInfo = true
+	}
+}
+
 // LoadWorkspace loads all packages in dir and returns a workspace.
 func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption) (*Workspace, error) {
 	options := &loadWorkspaceOptions{}
@@ -305,7 +372,7 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 		workspaceCache.entries[cacheKey] = entry
 		workspaceCache.mu.Unlock()
 
-		workspace, err := loadWithDiskCache(ctx, dir, effectiveCacheDir, report)
+		workspace, err := loadWithDiskCache(ctx, dir, effectiveCacheDir, options.typeInfo, report)
 		if err != nil {
 			workspaceCache.mu.Lock()
 			delete(workspaceCache.entries, cacheKey)
@@ -322,16 +389,21 @@ func LoadWorkspace(ctx context.Context, dir string, opts ...LoadWorkspaceOption)
 		return workspace, nil
 	}
 
-	return loadWithDiskCache(ctx, dir, effectiveCacheDir, report)
+	return loadWithDiskCache(ctx, dir, effectiveCacheDir, options.typeInfo, report)
 }
 
-func parseWorkspace(ctx context.Context, dir string, report func(string)) (*Workspace, error) {
+func parseWorkspace(ctx context.Context, dir string, withTypeInfo bool, report func(string)) (*Workspace, error) {
+	mode := toolspackages.NeedName | toolspackages.NeedFiles |
+		toolspackages.NeedSyntax |
+		toolspackages.NeedCompiledGoFiles |
+		toolspackages.NeedImports
+	if withTypeInfo {
+		mode |= toolspackages.NeedTypes | toolspackages.NeedTypesInfo
+	}
+
 	cfg := &toolspackages.Config{
-		Dir: dir,
-		Mode: toolspackages.NeedName | toolspackages.NeedFiles |
-			toolspackages.NeedSyntax |
-			toolspackages.NeedCompiledGoFiles |
-			toolspackages.NeedImports,
+		Dir:     dir,
+		Mode:    mode,
 		Context: ctx,
 	}
 
@@ -351,8 +423,12 @@ func parseWorkspace(ctx context.Context, dir string, report func(string)) (*Work
 	}
 
 	workspace := workspacebuilder.New()
+	var typedPkgs []*gotypes.Package
 	for _, pkg := range pkgs {
 		report(fmt.Sprintf("Analyzing %s...", pkg.ID))
+		if withTypeInfo && pkg.Types != nil {
+			typedPkgs = append(typedPkgs, pkg.Types)
+		}
 
 		p := packages.Item{
 			ID:      pkg.ID,
@@ -386,7 +462,7 @@ func parseWorkspace(ctx context.Context, dir string, report func(string)) (*Work
 
 			indexFileDependencies(workspace, p, filename, file, workspacePackageIDs)
 
-			indexFileEntries(workspace, p, filename, file)
+			indexFileEntries(workspace, p, filename, file, pkg.TypesInfo)
 		}
 
 		workspace.AddPackage(p)
@@ -401,6 +477,7 @@ func parseWorkspace(ctx context.Context, dir string, report func(string)) (*Work
 		Variables:     snapshot.Variables,
 		FunctionCalls: snapshot.FunctionCalls,
 		Dependencies:  snapshot.Dependencies,
+		typed:         typedPkgs,
 	}, nil
 }
 
@@ -465,57 +542,221 @@ func indexFileEntries(
 	pkg packages.Item,
 	filename string,
 	file *ast.File,
+	typesInfo *gotypes.Info,
 ) {
 	if file == nil {
 		return
 	}
 
-	ast.Inspect(file, func(n ast.Node) bool {
-		switch node := n.(type) {
-		case *ast.TypeSpec:
-			workspace.AddType(types.Item{
-				Ref:  newRef(pkg, filename, node, common.RefKindType, typeMatchText(node.Name.Name, exprKind(node.Type))),
-				Name: node.Name.Name,
-				Kind: exprKind(node.Type),
-				Node: node,
-			})
+	ast.Walk(&entryVisitor{
+		workspace: workspace,
+		pkg:       pkg,
+		filename:  filename,
+		file:      file,
+		typesInfo: typesInfo,
+	}, file)
+}
 
-		case *ast.FuncDecl:
-			receiver := ""
-			if node.Recv != nil && len(node.Recv.List) > 0 {
-				receiver = exprText(node.Recv.List[0].Type)
-			}
-			workspace.AddFunction(functions.Item{
-				Ref:      newRef(pkg, filename, node, common.RefKindFunction, functionMatchText(node.Name.Name, receiver)),
-				Name:     node.Name.Name,
-				Receiver: receiver,
-				Node:     node,
-			})
+// entryVisitor populates the workspace builder while walking a single file.
+// It tracks the enclosing *ast.FuncDecl so that call entries can be tagged
+// with the lexical caller they live inside, and threads the package's
+// *types.Info through so callee qnames and field types resolve.
+//
+// Function literals (*ast.FuncLit) are intentionally not pushed onto the
+// stack: a call inside a closure inside a method should still report the
+// enclosing FuncDecl as its caller.
+type entryVisitor struct {
+	workspace *workspacebuilder.Builder
+	pkg       packages.Item
+	filename  string
+	file      *ast.File
+	typesInfo *gotypes.Info
+	enclosing *ast.FuncDecl
+}
 
-		case *ast.ValueSpec:
-			kind := "var"
-			if genDecl, ok := enclosingGenDecl(file, node); ok && genDecl.Tok == token.CONST {
-				kind = "const"
-			}
-			for _, name := range node.Names {
-				workspace.AddVariable(variables.Item{
-					Ref:  newRef(pkg, filename, name, common.RefKindVariable, variableMatchText(name.Name, kind)),
-					Name: name.Name,
-					Kind: kind,
-					Node: name,
-				})
-			}
+func (v *entryVisitor) Visit(n ast.Node) ast.Visitor {
+	if n == nil {
+		return nil
+	}
 
-		case *ast.CallExpr:
-			workspace.AddFunctionCall(functioncalls.Item{
-				Ref:    newRef(pkg, filename, node, common.RefKindFunctionCall, callMatchText(pkg.FileSet, node)),
-				Callee: calleeName(node.Fun),
-				Node:   node,
+	switch node := n.(type) {
+	case *ast.TypeSpec:
+		fields, fieldEmbeds := extractStructFields(v.pkg.FileSet, node, v.typesInfo)
+		methods, ifaceEmbeds := extractInterfaceMethods(v.pkg.ID, node, v.typesInfo)
+		embeds := fieldEmbeds
+		if len(ifaceEmbeds) > 0 {
+			embeds = ifaceEmbeds
+		}
+		v.workspace.AddType(types.Item{
+			Ref:     newRef(v.pkg, v.filename, node, common.RefKindType, typeMatchText(node.Name.Name, exprKind(node.Type))),
+			Name:    node.Name.Name,
+			QName:   typeQName(v.pkg.ID, node.Name.Name),
+			Kind:    exprKind(node.Type),
+			Fields:  fields,
+			Methods: methods,
+			Embeds:  embeds,
+			Node:    node,
+		})
+
+	case *ast.FuncDecl:
+		receiver := ""
+		if node.Recv != nil && len(node.Recv.List) > 0 {
+			receiver = exprText(node.Recv.List[0].Type)
+		}
+		v.workspace.AddFunction(functions.Item{
+			Ref:      newRef(v.pkg, v.filename, node, common.RefKindFunction, functionMatchText(node.Name.Name, receiver)),
+			Name:     node.Name.Name,
+			QName:    funcQName(v.pkg.ID, receiver, node.Name.Name),
+			Receiver: receiver,
+			Node:     node,
+		})
+		// Children of this FuncDecl are visited with a child visitor that
+		// records this declaration as the enclosing caller.
+		return &entryVisitor{
+			workspace: v.workspace,
+			pkg:       v.pkg,
+			filename:  v.filename,
+			file:      v.file,
+			typesInfo: v.typesInfo,
+			enclosing: node,
+		}
+
+	case *ast.ValueSpec:
+		kind := "var"
+		if genDecl, ok := enclosingGenDecl(v.file, node); ok && genDecl.Tok == token.CONST {
+			kind = "const"
+		}
+		for _, name := range node.Names {
+			v.workspace.AddVariable(variables.Item{
+				Ref:  newRef(v.pkg, v.filename, name, common.RefKindVariable, variableMatchText(name.Name, kind)),
+				Name: name.Name,
+				Kind: kind,
+				Node: name,
 			})
 		}
 
-		return true
-	})
+	case *ast.CallExpr:
+		var (
+			callerName, callerReceiver, callerQName string
+		)
+		if v.enclosing != nil {
+			callerName = v.enclosing.Name.Name
+			if v.enclosing.Recv != nil && len(v.enclosing.Recv.List) > 0 {
+				callerReceiver = exprText(v.enclosing.Recv.List[0].Type)
+			}
+			callerQName = funcQName(v.pkg.ID, callerReceiver, callerName)
+		}
+		calleePkg, calleeQName, isMethod := resolveCallee(v.typesInfo, node.Fun)
+		v.workspace.AddFunctionCall(functioncalls.Item{
+			Ref:            newRef(v.pkg, v.filename, node, common.RefKindFunctionCall, callMatchText(v.pkg.FileSet, node)),
+			Callee:         calleeName(node.Fun),
+			CalleePackage:  calleePkg,
+			CalleeQName:    calleeQName,
+			CalleeIsMethod: isMethod,
+			CallerName:     callerName,
+			CallerReceiver: callerReceiver,
+			CallerQName:    callerQName,
+			Node:           node,
+		})
+	}
+
+	return v
+}
+
+// typeQName composes a type's canonical fully-qualified name as
+// "<importpath>.<TypeName>".
+func typeQName(pkgID, typeName string) string {
+	return pkgID + "." + typeName
+}
+
+// funcQName composes a function or method's canonical fully-qualified
+// name. For methods, pointer indirection on the receiver is stripped so
+// the qname is stable across pointer/value declarations of the same
+// method set.
+//
+//	plain function: "<importpath>.<Name>"
+//	method:         "<importpath>.<RecvType>.<Name>"
+func funcQName(pkgID, receiver, name string) string {
+	if receiver == "" {
+		return pkgID + "." + name
+	}
+	recv := strings.TrimPrefix(receiver, "*")
+	return pkgID + "." + recv + "." + name
+}
+
+// resolveCallee inspects type information to derive the import path and
+// fully-qualified name of a CallExpr's callee.
+//
+// Returns empty values when typesInfo is nil (i.e. the workspace was loaded
+// without WithTypeInfo), when the callee is not a Go function (e.g. type
+// conversions, builtins, calls through interface values that can't be
+// resolved), or when the resolution otherwise fails.
+//
+// For methods CalleeQName has the form "<importpath>.<TypeName>.<MethodName>"
+// with any pointer indirection on the receiver stripped. For plain functions
+// it is "<importpath>.<FuncName>". CalleePackage is the receiver type's
+// defining package for methods and the function's defining package for
+// plain functions; it is empty for callees in the universe scope.
+func resolveCallee(typesInfo *gotypes.Info, fun ast.Expr) (calleePkg, calleeQName string, isMethod bool) {
+	if typesInfo == nil {
+		return "", "", false
+	}
+
+	// Strip parentheses so e.g. (foo)() resolves the same as foo().
+	for {
+		paren, ok := fun.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		fun = paren.X
+	}
+
+	var obj gotypes.Object
+	switch e := fun.(type) {
+	case *ast.Ident:
+		obj = typesInfo.Uses[e]
+	case *ast.SelectorExpr:
+		// Method or field selection (receiver.method or receiver.field()).
+		if sel, ok := typesInfo.Selections[e]; ok {
+			obj = sel.Obj()
+			isMethod = sel.Kind() == gotypes.MethodVal || sel.Kind() == gotypes.MethodExpr
+		} else {
+			// Qualified identifier (pkg.Func).
+			obj = typesInfo.Uses[e.Sel]
+		}
+	default:
+		return "", "", false
+	}
+
+	fn, ok := obj.(*gotypes.Func)
+	if !ok || fn == nil {
+		return "", "", false
+	}
+
+	if sig, ok := fn.Type().(*gotypes.Signature); ok && sig.Recv() != nil {
+		isMethod = true
+		recvType := sig.Recv().Type()
+		if ptr, ok := recvType.(*gotypes.Pointer); ok {
+			recvType = ptr.Elem()
+		}
+		if named, ok := recvType.(*gotypes.Named); ok {
+			obj := named.Obj()
+			pkgPath := ""
+			if obj.Pkg() != nil {
+				pkgPath = obj.Pkg().Path()
+			}
+			qname := obj.Name() + "." + fn.Name()
+			if pkgPath != "" {
+				qname = pkgPath + "." + qname
+			}
+			return pkgPath, qname, true
+		}
+	}
+
+	if fn.Pkg() != nil {
+		return fn.Pkg().Path(), fn.Pkg().Path() + "." + fn.Name(), isMethod
+	}
+	return "", fn.Name(), isMethod
 }
 
 func indexFileDependencies(
@@ -676,6 +917,27 @@ func exprKind(expr ast.Expr) string {
 	}
 }
 
+// typeText renders a type expression as source-equivalent text, handling
+// every AST shape (named types, pointers, maps, slices, arrays, channels,
+// function types, generic instantiations) by delegating to go/printer.
+//
+// Falls back to exprText when the FileSet is unavailable (e.g. on a test
+// item synthesized without a parser run). Multi-line printer output is
+// collapsed to a single line so the result is safe to use as a single
+// attribute value.
+func typeText(fset *token.FileSet, expr ast.Expr) string {
+	if expr == nil {
+		return ""
+	}
+	if fset != nil {
+		var buf bytes.Buffer
+		if err := printer.Fprint(&buf, fset, expr); err == nil {
+			return strings.Join(strings.Fields(buf.String()), " ")
+		}
+	}
+	return exprText(expr)
+}
+
 func exprText(expr ast.Expr) string {
 	switch e := expr.(type) {
 	case *ast.Ident:
@@ -710,4 +972,135 @@ func enclosingGenDecl(file *ast.File, target *ast.ValueSpec) (*ast.GenDecl, bool
 		}
 	}
 	return nil, false
+}
+
+// extractStructFields walks a TypeSpec for a struct type and returns the
+// declared fields plus the syntactic identifiers of any embedded fields.
+//
+// Returns nil slices for non-struct types. Field type names are rendered via
+// go/printer so composite types (maps, slices, function types, etc.) appear
+// in full source-equivalent form rather than being dropped.
+func extractStructFields(fset *token.FileSet, node *ast.TypeSpec, typesInfo *gotypes.Info) ([]types.FieldInfo, []string) {
+	st, ok := node.Type.(*ast.StructType)
+	if !ok || st.Fields == nil {
+		return nil, nil
+	}
+
+	var fields []types.FieldInfo
+	var embeds []string
+	for _, f := range st.Fields.List {
+		typeName := typeText(fset, f.Type)
+		typeQName := resolveTypeQName(typesInfo, f.Type)
+		tag := unquoteTag(f.Tag)
+
+		if len(f.Names) == 0 {
+			// Embedded field — the type itself is the field name.
+			fields = append(fields, types.FieldInfo{
+				TypeName:  typeName,
+				TypeQName: typeQName,
+				Tag:       tag,
+				Embedded:  true,
+			})
+			if name := embedIdentifier(typeQName, typeName); name != "" {
+				embeds = append(embeds, name)
+			}
+			continue
+		}
+		for _, ident := range f.Names {
+			fields = append(fields, types.FieldInfo{
+				Name:      ident.Name,
+				TypeName:  typeName,
+				TypeQName: typeQName,
+				Tag:       tag,
+				Embedded:  false,
+			})
+		}
+	}
+	return fields, embeds
+}
+
+// extractInterfaceMethods walks a TypeSpec for an interface type and returns
+// the methods directly declared on it, plus the syntactic identifiers of any
+// embedded interfaces. Methods contributed by embedded interfaces are not
+// flattened into the methods list — callers should follow Embeds for that.
+//
+// Returns nil slices for non-interface types.
+func extractInterfaceMethods(pkgID string, node *ast.TypeSpec, typesInfo *gotypes.Info) ([]types.MethodInfo, []string) {
+	it, ok := node.Type.(*ast.InterfaceType)
+	if !ok || it.Methods == nil {
+		return nil, nil
+	}
+
+	ifaceName := node.Name.Name
+	var methods []types.MethodInfo
+	var embeds []string
+	for _, m := range it.Methods.List {
+		if len(m.Names) == 0 {
+			// Embedded interface — record its identifier.
+			typeName := exprText(m.Type)
+			typeQName := resolveTypeQName(typesInfo, m.Type)
+			if name := embedIdentifier(typeQName, typeName); name != "" {
+				embeds = append(embeds, name)
+			}
+			continue
+		}
+		for _, ident := range m.Names {
+			info := types.MethodInfo{Name: ident.Name}
+			if typesInfo != nil && pkgID != "" {
+				info.QName = pkgID + "." + ifaceName + "." + ident.Name
+			}
+			methods = append(methods, info)
+		}
+	}
+	return methods, embeds
+}
+
+// resolveTypeQName looks up the resolved fully-qualified name of an
+// expression's type. Returns an empty string when type info is unavailable
+// or when the expression's type is not a named type (e.g. a literal map,
+// channel, or function type).
+func resolveTypeQName(typesInfo *gotypes.Info, expr ast.Expr) string {
+	if typesInfo == nil {
+		return ""
+	}
+	t := typesInfo.TypeOf(expr)
+	if t == nil {
+		return ""
+	}
+	return namedTypeQName(t)
+}
+
+func namedTypeQName(t gotypes.Type) string {
+	switch v := t.(type) {
+	case *gotypes.Named:
+		obj := v.Obj()
+		if obj.Pkg() == nil {
+			return obj.Name()
+		}
+		return obj.Pkg().Path() + "." + obj.Name()
+	case *gotypes.Pointer:
+		return namedTypeQName(v.Elem())
+	}
+	return ""
+}
+
+// embedIdentifier prefers the fully-qualified type name when available,
+// falling back to the syntactic source text. Returns an empty string when
+// neither is informative (e.g. an embedded type literal, which is not legal
+// Go anyway).
+func embedIdentifier(qname, syntactic string) string {
+	if qname != "" {
+		return qname
+	}
+	return syntactic
+}
+
+func unquoteTag(lit *ast.BasicLit) string {
+	if lit == nil || lit.Value == "" {
+		return ""
+	}
+	if unquoted, err := strconv.Unquote(lit.Value); err == nil {
+		return unquoted
+	}
+	return lit.Value
 }

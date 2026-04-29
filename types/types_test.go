@@ -23,6 +23,19 @@ func TestTypes_MatchBuildsRefsFromPredicates(t *testing.T) {
 	}
 }
 
+func TestTypes_QName_ComposedFromImportPathAndName(t *testing.T) {
+	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
+
+	var sawOrder bool
+	for _, ti := range workspace.Types.All() {
+		if ti.Name == "Order" {
+			sawOrder = true
+			assert.Equal(t, "example.com/fixturemod/domain.Order", ti.QName)
+		}
+	}
+	assert.True(t, sawOrder, "expected to see the Order type")
+}
+
 func TestTypes_IsExported_ReturnsOnlyExportedTypes(t *testing.T) {
 	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 

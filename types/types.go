@@ -8,11 +8,49 @@ import (
 )
 
 // Item represents a type declaration entry.
+//
+// QName is the canonical fully-qualified name "<importpath>.<Name>" and
+// is always populated. It's the join key against
+// functions.Item.Receiver / functions.Item.QName, types.Item.Embeds, and
+// types.Item.Methods (which use it for the receiver-prefix component).
+//
+// Fields lists the declared fields of a struct, including embedded
+// entries (Embedded == true, Name == "").
+//
+// Methods lists the methods declared directly on an interface. Methods
+// contributed by embedded interfaces are not flattened into this list;
+// follow Embeds to discover them.
+//
+// Embeds lists the type identifiers of embedded fields (for structs) or
+// embedded interfaces (for interfaces). When the workspace was loaded
+// with archscout.WithTypeInfo() the entries are fully-qualified
+// (e.g. "io.Reader"); otherwise they are syntactic ("Reader" or
+// "io.Reader" depending on how the source wrote the embed).
 type Item struct {
-	Ref  common.Ref
-	Name string
-	Kind string
-	Node *ast.TypeSpec
+	Ref     common.Ref
+	Name    string
+	QName   string
+	Kind    string
+	Fields  []FieldInfo
+	Methods []MethodInfo
+	Embeds  []string
+	Node    *ast.TypeSpec
+}
+
+// FieldInfo describes a single struct field.
+type FieldInfo struct {
+	Name      string
+	TypeName  string
+	TypeQName string
+	Tag       string
+	Embedded  bool
+}
+
+// MethodInfo describes a method declared directly on an interface. QName is
+// populated only when the workspace was loaded with archscout.WithTypeInfo().
+type MethodInfo struct {
+	Name  string
+	QName string
 }
 
 // MatchFunc is a function type that matches type entries.

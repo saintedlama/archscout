@@ -63,3 +63,125 @@ func TestFunctionCalls_InTestAndNotInTest_FilterByTestFilenames(t *testing.T) {
 	assert.Len(t, calls.IsTest().All(), 1, "expected one test call entry")
 	assert.Len(t, calls.IsNotTest().All(), 1, "expected one non-test call entry")
 }
+
+func TestFunctionCalls_CallerIdentity_ResolvedForFunctionsAndMethods(t *testing.T) {
+	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
+
+	type sighting struct {
+		caller   string
+		receiver string
+	}
+
+	got := map[string]sighting{}
+	for _, item := range workspace.FunctionCalls.All() {
+		got[item.Callee] = sighting{
+			caller:   item.CallerName,
+			receiver: item.CallerReceiver,
+		}
+	}
+
+	// fmt.Errorf in subpkg/sub.go is called from func SubErr (no receiver).
+	// fmt.Errorf in application/service.go is called from method (s *OrderService) PlaceOrder.
+	// fmt.Errorf in infrastructure/repo.go is called from method (r *OrderRepository) Find.
+	// We don't know which Callee the map kept (last wins), assert the caller information is present for any of them.
+	for callee, s := range got {
+		if callee != "fmt.Errorf" {
+			continue
+		}
+		assert.NotEmpty(t, s.caller, "fmt.Errorf call should have a non-empty CallerName")
+	}
+
+	var sawPlaceOrderCaller bool
+	for _, item := range workspace.FunctionCalls.All() {
+		if item.Callee != "domain.NewOrder" {
+			continue
+		}
+		sawPlaceOrderCaller = true
+		assert.Equal(t, "PlaceOrder", item.CallerName, "expected enclosing function to be PlaceOrder")
+		assert.Equal(t, "*OrderService", item.CallerReceiver, "expected pointer receiver on caller")
+	}
+	assert.True(t, sawPlaceOrderCaller, "expected to see at least one domain.NewOrder call")
+
+	var sawMainCall bool
+	for _, item := range workspace.FunctionCalls.All() {
+		if item.Callee != "repo.Save" {
+			continue
+		}
+		sawMainCall = true
+		assert.Equal(t, "main", item.CallerName)
+		assert.Empty(t, item.CallerReceiver, "main has no receiver")
+	}
+	assert.True(t, sawMainCall, "expected to see repo.Save call from main")
+}
+
+func TestFunctionCalls_CallerIdentity_EmptyForPackageLevelInitializers(t *testing.T) {
+	workspace := internaltest.LoadFixtureWorkspace(t, "callerfixture")
+
+	// errors.New in `var ErrSentinel = errors.New(...)` is at package level
+	var sawSentinel bool
+	for _, item := range workspace.FunctionCalls.All() {
+		if item.Callee != "errors.New" {
+			continue
+		}
+		if item.CallerName == "" {
+			sawSentinel = true
+			assert.Empty(t, item.CallerReceiver)
+		}
+	}
+	assert.True(t, sawSentinel, "expected to see errors.New at package level with empty caller")
+}
+
+func TestFunctionCalls_CallerIdentity_PreservedAcrossClosures(t *testing.T) {
+	workspace := internaltest.LoadFixtureWorkspace(t, "callerfixture")
+
+	var sawClosureCall bool
+	for _, item := range workspace.FunctionCalls.All() {
+		if item.Callee != "strings.ToUpper" {
+			continue
+		}
+		sawClosureCall = true
+		assert.Equal(t, "Validate", item.CallerName, "closure should not shadow the enclosing FuncDecl")
+		assert.Equal(t, "*Service", item.CallerReceiver)
+	}
+	assert.True(t, sawClosureCall, "expected to see strings.ToUpper call inside closure")
+}
+
+func TestFunctionCalls_CallerQName_ComposedFromEnclosingFuncDecl(t *testing.T) {
+	workspace := internaltest.LoadFixtureWorkspace(t, "fixturemod")
+
+	// domain.NewOrder is called from (s *OrderService).PlaceOrder. CallerQName
+	// should be the canonical qname of that method, with pointer indirection
+	// stripped from the receiver.
+	var sawMethod, sawTopLevel bool
+	for _, item := range workspace.FunctionCalls.All() {
+		if item.Callee == "domain.NewOrder" {
+			sawMethod = true
+			assert.Equal(t,
+				"example.com/fixturemod/application.OrderService.PlaceOrder",
+				item.CallerQName,
+				"CallerQName must compose package + receiver type + method name")
+		}
+		// repo.Save is called from main (a top-level FuncDecl with no receiver).
+		if item.Callee == "repo.Save" {
+			sawTopLevel = true
+			assert.Equal(t, "example.com/fixturemod.main", item.CallerQName)
+		}
+	}
+	assert.True(t, sawMethod, "expected to see domain.NewOrder call")
+	assert.True(t, sawTopLevel, "expected to see repo.Save call")
+}
+
+func TestFunctionCalls_CallerQName_EmptyForPackageLevelInitializers(t *testing.T) {
+	workspace := internaltest.LoadFixtureWorkspace(t, "callerfixture")
+
+	// errors.New in `var ErrSentinel = errors.New(...)` has no enclosing
+	// FuncDecl, so CallerQName must be empty.
+	var sawSentinel bool
+	for _, item := range workspace.FunctionCalls.All() {
+		if item.Callee == "errors.New" && item.CallerName == "" {
+			sawSentinel = true
+			assert.Empty(t, item.CallerQName)
+		}
+	}
+	assert.True(t, sawSentinel, "expected to see errors.New at package level")
+}

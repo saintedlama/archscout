@@ -110,6 +110,73 @@ refs := workspace.FunctionCalls.
   })
 ```
 
+Each `FunctionCall` also carries the function declaration that lexically
+encloses the call site. This is useful for asking who, exactly, is calling
+something:
+
+```go
+// Every method on *Service that calls fmt.Errorf.
+refs := workspace.FunctionCalls.Match(func(call archscout.FunctionCall) bool {
+  return call.Callee == "fmt.Errorf" &&
+    call.CallerReceiver == "*Service"
+})
+```
+
+`CallerName` and `CallerReceiver` are empty for calls that appear at package
+level (for example, inside a `var x = foo()` initializer). For methods,
+`CallerReceiver` mirrors the raw receiver text from `Function.Receiver`
+(e.g. `"*Service"` for a pointer receiver, `"Service"` for a value receiver).
+
+`CallerQName` is the canonical fully-qualified name of the enclosing
+function (or empty at package level), composed identically to
+`Function.QName`. It's the join key when correlating calls back to function
+declarations:
+
+```go
+// Every method on *Service, with each one's set of distinct callees.
+calls := workspace.FunctionCalls.Match(func(call archscout.FunctionCall) bool {
+  return call.CallerQName == "github.com/your-project/api.Service.Run"
+})
+```
+
+`Function.QName` and `Type.QName` are always populated and follow the same
+convention: `<importpath>.<Name>` for plain functions and types,
+`<importpath>.<RecvType>.<Name>` for methods (pointer indirection on the
+receiver stripped). They're the identifier you'd persist in any external
+graph or store; the unqualified `Name` + `Receiver` remain available for
+display purposes.
+
+The default `Callee` field is the syntactic callee text from source — it's
+useful for grep-style matches but treats `crypto.Sign` and `c.Sign` (a method
+on a type aliased `crypto`) as different callees. For cross-package edges,
+load with `WithTypeInfo()` to get fully-qualified resolution:
+
+```go
+ws, err := archscout.LoadWorkspace(ctx, ".", archscout.WithTypeInfo())
+
+// Every call into the strings package, regardless of how it was written.
+refs := ws.FunctionCalls.Match(func(call archscout.FunctionCall) bool {
+  return call.CalleePackage == "strings"
+})
+
+// All method calls on api.Service.
+refs = ws.FunctionCalls.Match(func(call archscout.FunctionCall) bool {
+  return call.CalleeIsMethod &&
+    call.CalleeQName == "example.com/your-project/api.Service.Run"
+})
+```
+
+`CalleeQName` has the form `<importpath>.<TypeName>.<MethodName>` for methods
+(pointer indirection on the receiver is stripped) and `<importpath>.<FuncName>`
+for plain functions. For interface dispatch, the qname resolves to the
+interface's defining method — type information alone cannot know the dynamic
+implementer at runtime.
+
+`WithTypeInfo()` is opt-in because loading full Go type information is
+substantially slower and uses more memory than the default mode. The disk
+cache fingerprints type-info loads separately, so toggling the option will
+not return stale, partially-populated workspaces.
+
 ### 2. Validate architecture with reusable rules
 
 ```go
@@ -236,10 +303,10 @@ archscout.Rule("ui/common must not depend on other internal packages").
 | --------------- | -------------- | ----------------------------------------------------------------------------------- |
 | `Packages`      | `Package`      | `ID`, `Name`, `Files`, `Dependencies()`                                             |
 | `Files`         | `File`         | `Filename`, `Dependencies()`                                                        |
-| `Types`         | `Type`         | `Name`, `Kind`                                                                      |
-| `Functions`     | `Function`     | `Name`, `Receiver`                                                                  |
+| `Types`         | `Type`         | `Name`, `QName`, `Kind`, `Fields`, `Methods`, `Embeds`                              |
+| `Functions`     | `Function`     | `Name`, `QName`, `Receiver`                                                         |
 | `Variables`     | `Variable`     | `Name`, `Kind`                                                                      |
-| `FunctionCalls` | `FunctionCall` | `Callee`                                                                            |
+| `FunctionCalls` | `FunctionCall` | `Callee`, `CalleePackage`, `CalleeQName`, `CalleeIsMethod`, `CallerName`, `CallerReceiver`, `CallerQName` |
 | `Dependencies`  | `Dependency`   | `ImportPath`, `WithinWorkspace`, `External`, `StandardLibrary`, `TargetPackageName` |
 
 All collections support:
@@ -362,6 +429,97 @@ importers := graph.Importers(mod.Pkg("domain/..."))
 
 All methods support the `/...` glob convention.
 
+### 9. Find interface implementers
+
+When a workspace is loaded with `WithTypeInfo()`, `BuildImplementsGraph` lets
+you ask which concrete types satisfy a given interface and which interfaces
+a given type implements:
+
+```go
+import "github.com/saintedlama/archscout"
+
+ws, err := archscout.LoadWorkspace(ctx, ".", archscout.WithTypeInfo())
+graph := archscout.BuildImplementsGraph(ws)
+
+// Who implements example.com/api.Greeter?
+for _, qname := range graph.Implementers("example.com/api.Greeter") {
+    fmt.Println(qname)
+}
+
+// Restrict to a specific package — useful when generated mocks should be
+// excluded from a "who satisfies this in production code?" query.
+real := graph.Implementers(
+    "example.com/api.Greeter",
+    "example.com/your-project/...",
+)
+
+// Which interfaces does example.com/your-project.PointerGreeter satisfy?
+ifaces := graph.Interfaces("example.com/your-project.PointerGreeter")
+```
+
+Empty interfaces (`interface{}` / `any`) are intentionally not indexed —
+every concrete type trivially implements them, which is rarely the answer
+you want. A type that satisfies an interface only via its pointer method set
+is still listed; the receiver semantics live in the underlying `*types.Named`
+if you need them.
+
+`BuildImplementsGraph` returns an empty (but safe) graph when the workspace
+was loaded without `WithTypeInfo()` or restored from a disk cache, since type
+information is not serialized.
+
+`ImplementsGraph` methods:
+
+| Method                                   | Description                                                                            |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `Implementers(ifaceQName, patterns...)`  | Sorted concrete-type qnames that satisfy the interface, optionally filtered by package |
+| `Interfaces(typeQName)`                  | Sorted interface qnames the given type satisfies                                       |
+
+### 10. Inspect type structure
+
+`Type` items expose the inner shape of structs and interfaces:
+
+```go
+import "github.com/saintedlama/archscout"
+
+ws, err := archscout.LoadWorkspace(ctx, ".", archscout.WithTypeInfo())
+
+// Find every struct that embeds inner.Base.
+for _, t := range ws.Types.All() {
+  for _, embed := range t.Embeds {
+    if embed == "example.com/your-project/inner.Base" {
+      fmt.Println(t.Name, "embeds inner.Base")
+    }
+  }
+}
+
+// Find every interface with at least three directly declared methods.
+for _, t := range ws.Types.All() {
+  if t.Kind == "interface" && len(t.Methods) >= 3 {
+    fmt.Println(t.Name)
+  }
+}
+```
+
+`Fields` is the declared struct fields, including embedded entries
+(`Embedded == true`, `Name == ""`). Multi-name fields like
+`Age, Year int` fan out to one `FieldInfo` per name. Tags are returned
+without the surrounding backticks. With `WithTypeInfo()`, `TypeQName`
+resolves cross-package field types; without it, only the syntactic
+`TypeName` is populated.
+
+`Methods` lists only the methods declared *directly* on an interface.
+Methods contributed by embedded interfaces are not flattened in — follow
+`Embeds` for those.
+
+`Embeds` is a flat list of embedded type identifiers — fully qualified when
+`WithTypeInfo()` is enabled, syntactic source text otherwise. It exists for
+both struct embeds and embedded interfaces, so the question "what does this
+type compose with?" is one slice access regardless of kind.
+
+Concrete-type methods (those declared via `func (T) ...`) live in the
+`Functions` collection with a non-empty `Receiver`; they are intentionally
+not duplicated under `Type.Methods`.
+
 ## Refs and Formatting
 
 Rule violations are returned as `Refs` — each `Ref` identifies a source location:
@@ -395,8 +553,10 @@ Available format options: `WithRefPackage()`, `WithRefKind()`, `WithoutRefFile()
 - `WithInMemoryCache() LoadWorkspaceOption` — reuse a loaded workspace within the process
 - `WithDiskCache() LoadWorkspaceOption` — persist a workspace snapshot in the platform-default cache directory
 - `WithDiskCacheDir(dir string) LoadWorkspaceOption` — persist a workspace snapshot in an explicit directory
+- `WithTypeInfo() LoadWorkspaceOption` — load full Go type information so `FunctionCall.CalleePackage`, `CalleeQName` and `CalleeIsMethod` are populated
 - `Module(path)` — helper for building fully-qualified package patterns
 - `BuildPackageGraph(c dependencies.Collection) *PackageGraph` — builds a transitive package graph from a dependency collection
+- `BuildImplementsGraph(ws *Workspace) *ImplementsGraph` — builds an interface-implementation graph from a `WithTypeInfo()` workspace
 - `Rule(name)` — entry point for all rule construction
 
 Rule types expose:
