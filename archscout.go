@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/saintedlama/archscout/codegraph"
+	"github.com/saintedlama/archscout/codegraph/sqlite"
 	"github.com/saintedlama/archscout/common"
 	"github.com/saintedlama/archscout/dependencies"
 	"github.com/saintedlama/archscout/files"
@@ -103,6 +105,92 @@ type PackageGraph = packagegraph.PackageGraph
 //	graph := archscout.BuildPackageGraph(ws.Dependencies.IsNotTest())
 func BuildPackageGraph(c dependencies.Collection) *PackageGraph {
 	return packagegraph.BuildGraph(c)
+}
+
+// CodeGraph is a unified multi-level directed graph of modules, packages, files, types, and functions.
+// See codegraph.Graph for the full API.
+type CodeGraph = codegraph.Graph
+type CodeNode = codegraph.Node
+type CodeEdge = codegraph.Edge
+type CodeNodeKind = codegraph.NodeKind
+type CodeEdgeKind = codegraph.EdgeKind
+type ExportOption = codegraph.ExportOption
+
+// SQLite and vector database types and helpers.
+type (
+	SQLiteStore     = sqlite.Store
+	SQLiteOption    = sqlite.Option
+	VectorMatch     = sqlite.VectorMatch
+	HybridExpansion = sqlite.HybridExpansion
+	EmbeddingFunc   = sqlite.EmbeddingFunc
+)
+
+var (
+	ModuleNodeID   = codegraph.ModuleNodeID
+	PackageNodeID  = codegraph.PackageNodeID
+	FileNodeID     = codegraph.FileNodeID
+	TypeNodeID     = codegraph.TypeNodeID
+	FunctionNodeID = codegraph.FunctionNodeID
+
+	WithNodeKinds = codegraph.WithNodeKinds
+	WithEdgeKinds = codegraph.WithEdgeKinds
+	WithDirection = codegraph.WithDirection
+	WithTitle     = codegraph.WithTitle
+
+	WithEmbeddingFunc = sqlite.WithEmbeddingFunc
+	OpenSQLite        = sqlite.Open
+)
+
+const (
+	CodeNodeKindModule   = codegraph.NodeKindModule
+	CodeNodeKindPackage  = codegraph.NodeKindPackage
+	CodeNodeKindFile     = codegraph.NodeKindFile
+	CodeNodeKindType     = codegraph.NodeKindType
+	CodeNodeKindFunction = codegraph.NodeKindFunction
+
+	CodeEdgeKindContains       = codegraph.EdgeKindContains
+	CodeEdgeKindImports        = codegraph.EdgeKindImports
+	CodeEdgeKindDependsOn      = codegraph.EdgeKindDependsOn
+	CodeEdgeKindCalls          = codegraph.EdgeKindCalls
+	CodeEdgeKindImplements     = codegraph.EdgeKindImplements
+	CodeEdgeKindEmbeds         = codegraph.EdgeKindEmbeds
+	CodeEdgeKindReferencesType = codegraph.EdgeKindReferencesType
+)
+
+// BuildCodeGraph constructs a unified CodeGraph indexing modules, packages,
+// files, types, and function calls from the workspace.
+func BuildCodeGraph(ws *Workspace) *CodeGraph {
+	if ws == nil {
+		return codegraph.Build(codegraph.Input{})
+	}
+	return codegraph.Build(codegraph.Input{
+		ModuleRoot:    ws.ModuleRoot(),
+		Packages:      ws.Packages,
+		Files:         ws.Files,
+		Types:         ws.Types,
+		Functions:     ws.Functions,
+		FunctionCalls: ws.FunctionCalls,
+		Dependencies:  ws.Dependencies,
+		Implements:    BuildImplementsGraph(ws),
+	})
+}
+
+// CodeGraph returns the unified CodeGraph for this workspace.
+func (ws *Workspace) CodeGraph() *CodeGraph {
+	return BuildCodeGraph(ws)
+}
+
+// ExportSQLite exports the workspace's CodeGraph to a SQLite database with FTS5 and optional vector embeddings.
+func ExportSQLite(ctx context.Context, ws *Workspace, dbPath string, opts ...SQLiteOption) error {
+	if ws == nil {
+		return fmt.Errorf("workspace is nil")
+	}
+	return sqlite.Export(ctx, ws.CodeGraph(), dbPath, opts...)
+}
+
+// ExportSQLite exports the workspace's CodeGraph to a SQLite database with FTS5 and optional vector embeddings.
+func (ws *Workspace) ExportSQLite(ctx context.Context, dbPath string, opts ...SQLiteOption) error {
+	return ExportSQLite(ctx, ws, dbPath, opts...)
 }
 
 // ImplementsGraph stores interface-implementation edges over the workspace's resolved go/types packages.
@@ -398,7 +486,7 @@ func parseWorkspace(ctx context.Context, dir string, withTypeInfo bool, report f
 		toolspackages.NeedCompiledGoFiles |
 		toolspackages.NeedImports
 	if withTypeInfo {
-		mode |= toolspackages.NeedTypes | toolspackages.NeedTypesInfo
+		mode |= toolspackages.NeedTypes | toolspackages.NeedTypesInfo | toolspackages.NeedDeps
 	}
 
 	cfg := &toolspackages.Config{

@@ -64,9 +64,127 @@ There is no "escape hatch" needed — the item **is** the data. This makes archs
 
 ## Install
 
+### As a Library
 ```bash
 go get github.com/saintedlama/archscout
 ```
+
+### As a Go Tool (Go 1.24+)
+Add `archscout` as a version-locked tool dependency to your project's `go.mod`:
+```bash
+go get -tool github.com/saintedlama/archscout/cmd/archscout
+```
+Then invoke it directly using `go tool`:
+```bash
+go tool archscout graph --sqlite .archscout/codegraph.db .
+```
+
+### As a Global CLI Binary
+```bash
+go install github.com/saintedlama/archscout/cmd/archscout@latest
+archscout graph --help
+```
+
+## CLI Usage
+
+When installed as a tool or binary, `archscout graph` lets you inspect, visualize, and persist the codebase graph directly from the terminal without writing code:
+
+```bash
+archscout graph [options] [path]
+# or via go tool:
+go tool archscout graph [options] [path]
+```
+
+### Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `-sqlite <file>` | `""` | Export a SQLite database with FTS5 search and vector tables for AI agents |
+| `-format <fmt>` | `mermaid` | Output diagram/data format: `mermaid`, `dot`, `json` |
+| `-out <file>` | `stdout` | Write output to a file instead of stdout |
+| `-type-info` | `true` | Load Go type information for callee and interface resolution |
+| `-node-kinds <list>` | all | Comma-separated node kinds: `module,package,file,type,function` |
+| `-edge-kinds <list>` | all | Comma-separated edge kinds: `contains,imports,calls,implements,embeds,referencestype,dependson` |
+| `-direction <dir>` | `LR` | Mermaid layout direction (`LR`, `TD`, `TB`, `RL`, `BT`) |
+| `-title <text>` | `""` | Title header for Mermaid and DOT diagrams |
+
+### Common Recipes
+
+```bash
+# Export SQLite database for AI coding agents:
+archscout graph --sqlite .archscout/codegraph.db .
+
+# Render full codebase architecture as a Mermaid diagram:
+archscout graph --format mermaid --out architecture.mmd .
+
+# Generate a high-level package import graph in Graphviz DOT:
+archscout graph --format dot --node-kinds package --edge-kinds imports --out imports.dot .
+
+# Export complete graph structure as JSON for custom tooling:
+archscout graph --format json --out graph.json .
+```
+
+### CLI Query Tool (`archscout query`)
+
+Query symbol locations, multi-hop caller chains, dependencies, and implementations from the terminal or scripts (auto-generates the database if missing):
+
+```bash
+# Full-text search (FTS5) for symbols, functions, types:
+archscout query fts "Workspace"
+# or simply:
+archscout query "Workspace"
+
+# Trace multi-hop callers to a function/method up to depth N:
+archscout query callers "github.com/org/repo/pkg.ProcessOrder" --depth 3
+
+# Trace outgoing dependencies (calls, imports) from a package or symbol:
+archscout query deps "github.com/org/repo/pkg" --depth 2
+
+# Inspect detailed metadata and exact source location of a symbol:
+archscout query info "OrderService"
+
+# Find concrete implementations of an interface:
+archscout query implementers "example.com/api.Greeter"
+
+# Output results as JSON for consumption by agent tools or scripts:
+archscout query callers "ProcessOrder" --json
+
+# Emit skill installation instructions and SKILL.md definition for AI agents:
+archscout query skill
+
+# Automatically install the skill into the project repository (.agents/skills/archscout/SKILL.md):
+archscout query skill --install
+```
+
+### Model Context Protocol (MCP) Server (`archscout mcp`)
+
+Run an MCP server over stdio to give AI coding assistants (Cursor, Windsurf, Claude Code, Cline) live access to the codebase graph:
+
+```bash
+archscout mcp --db .archscout/codegraph.db
+```
+
+#### Configuring in Cursor / Windsurf / Claude Desktop
+
+Add to your `.cursor/mcp.json` or `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "archscout": {
+      "command": "go",
+      "args": ["tool", "archscout", "mcp", "--db", ".archscout/codegraph.db"]
+    }
+  }
+}
+```
+
+Exposed MCP Tools:
+- `search_symbols(query, limit)`: Fast FTS5 full-text keyword and prefix search across all symbols.
+- `trace_callers(symbol, depth)`: Recursive CTE search finding all upstream callers.
+- `trace_dependencies(symbol, depth)`: Recursive CTE search finding downstream calls and imports.
+- `get_symbol_info(symbol)`: Retrieves kind, QName, package, file, line, and column.
+- `get_implementers(interface)`: Lists concrete types satisfying a Go interface.
 
 ## Quick Start
 
@@ -520,6 +638,159 @@ Concrete-type methods (those declared via `func (T) ...`) live in the
 `Functions` collection with a non-empty `Receiver`; they are intentionally
 not duplicated under `Type.Methods`.
 
+### 11. Query and visualize the full codebase graph
+
+`ws.CodeGraph()` (or `archscout.BuildCodeGraph(ws)`) provides a unified, multi-level directed graph connecting modules, packages, files, types, and functions with structural containment, call graphs, interface implementations, and dependencies:
+
+```go
+import "github.com/saintedlama/archscout"
+
+ws, _ := archscout.LoadWorkspace(ctx, ".", archscout.WithTypeInfo())
+graph := ws.CodeGraph()
+
+// 1. Cross-tier dependency queries:
+// Which modules does a specific function call?
+calledModules := graph.DependenciesOf(
+    archscout.FunctionNodeID("example.com/app/service.OrderService.Create"),
+    archscout.CodeNodeKindModule,
+    archscout.CodeEdgeKindCalls,
+)
+
+// Which packages does a specific file depend on?
+importedPkgs := graph.DependenciesOf(
+    archscout.FileNodeID("/path/to/order.go"),
+    archscout.CodeNodeKindPackage,
+    archscout.CodeEdgeKindImports,
+)
+
+// Which functions call into the domain package?
+callers := graph.DependentsOf(
+    archscout.PackageNodeID("example.com/app/domain"),
+    archscout.CodeNodeKindFunction,
+    archscout.CodeEdgeKindCalls,
+)
+
+// 2. Roll up fine-grained edges to architectural tiers:
+// Condense all function calls and type references into a Package-to-Package call graph:
+pkgCallGraph := graph.Rollup(archscout.CodeNodeKindPackage, archscout.CodeEdgeKindCalls)
+
+// Condense to high-level Module-to-Module dependencies:
+moduleGraph := graph.Rollup(archscout.CodeNodeKindModule)
+
+// 3. Detect cycles or explain reachability paths:
+cycles := graph.Cycles(archscout.CodeEdgeKindImports)
+paths := graph.Paths(
+    archscout.PackageNodeID("example.com/app/cmd"),
+    archscout.PackageNodeID("example.com/app/db"),
+    5, // max depth
+)
+
+// 4. Export diagrams:
+mermaidMD := graph.ToMermaid(
+    archscout.WithNodeKinds(archscout.CodeNodeKindPackage),
+    archscout.WithEdgeKinds(archscout.CodeEdgeKindImports),
+    archscout.WithTitle("Package Imports"),
+)
+
+dotOutput := graph.ToDOT(archscout.WithTitle("Component Dependencies"))
+jsonBytes, _ := graph.ToJSON()
+```
+
+`CodeGraph` methods:
+
+| Method                                               | Description                                                                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `Nodes(kinds...)`                                    | Sorted slice of all nodes, optionally filtered by `NodeKind`                          |
+| `Edges(kinds...)`                                    | Sorted slice of all edges, optionally filtered by `EdgeKind`                          |
+| `DirectDependencies(nodeID, kinds...)`               | Target nodes directly connected from `nodeID` via outgoing edges                     |
+| `DirectDependents(nodeID, kinds...)`                 | Source nodes directly connected to `nodeID` via incoming edges                        |
+| `TransitiveDependencies(nodeID, kinds...)`           | All reachable nodes along outgoing edges via BFS                                      |
+| `TransitiveDependents(nodeID, kinds...)`             | All nodes that can reach `nodeID` via incoming edges BFS                              |
+| `DependenciesOf(nodeID, targetKind, kinds...)`       | Target-kind nodes depended on by `nodeID` or its contained children                  |
+| `DependentsOf(nodeID, sourceKind, kinds...)`         | Source-kind nodes depending on `nodeID` or its contained children                      |
+| `Rollup(targetKind, kinds...)`                       | Condenses lower-level edges to the specified architectural tier (`Package`, `Module`) |
+| `InPackage(patterns...)`                             | Returns a filtered subgraph scoped to packages matching glob patterns                |
+| `Paths(srcID, dstID, maxDepth, kinds...)`            | Returns all simple directed paths between two nodes                                   |
+| `Cycles(kinds...)`                                   | Detects directed cycles across designated edge kinds                                  |
+| `ToMermaid(opts...)` / `ToDOT(opts...)` / `ToJSON()` | Exports the graph to Mermaid markdown, Graphviz DOT, or JSON                          |
+
+### 12. Export to SQLite & Vector DB for AI Coding Agents
+
+AI coding agents (e.g. Claude Code, Cursor, Windsurf, Devin) consume codebases best when they can run indexed full-text searches and structural graph queries without blowing through context windows. ArchScout can serialize its entire codebase graph into a portable, single-file SQLite database with FTS5 search, vector embeddings, and recursive CTE graph traversal:
+
+```go
+import (
+    "context"
+
+    "github.com/saintedlama/archscout"
+)
+
+// 1. Export workspace graph to SQLite (with FTS5 & optional vector embeddings)
+ctx := context.Background()
+err := ws.ExportSQLite(ctx, ".archscout/codegraph.db",
+    archscout.WithEmbeddingFunc(myEmbedder, 1536), // Optional: compute vector embeddings
+)
+
+// 2. Query in Go using the built-in SQLiteStore:
+store, err := archscout.OpenSQLite(".archscout/codegraph.db")
+defer store.Close()
+
+// Full-text search across symbols, packages, and signatures:
+nodes, _ := store.SearchFTS(ctx, "OrderService", 5)
+
+// Multi-hop caller chain traversal (Recursive CTE in SQL):
+callers, _ := store.TraceCallers(ctx, "github.com/org/repo/pkg.ProcessOrder", 3)
+
+// Hybrid vector + graph search:
+expansions, _ := store.HybridSearch(ctx, queryEmbedding, 3, 2)
+for _, exp := range expansions {
+    fmt.Printf("Seed symbol %s matched (dist: %.3f), called by: %v\n",
+        exp.MatchedNodeID, exp.Distance, exp.CallerIDs)
+}
+```
+
+#### GraphRAG in Pure SQL
+
+Any agent with SQLite access (via CLI, Python, or standard MCP tools) can query the database directly. For example, combining semantic vector similarity with a 3-hop caller expansion:
+
+```sql
+WITH top_seeds AS (
+    SELECT e.node_id, vec_distance_cosine(e.embedding, :query_vec) AS distance
+    FROM node_embeddings e
+    ORDER BY distance ASC
+    LIMIT 3
+),
+callers AS (
+    SELECT s.node_id AS seed_id, s.distance, ed.source_id AS caller_id, 1 AS depth
+    FROM top_seeds s
+    LEFT JOIN edges ed ON ed.target_id = s.node_id AND ed.kind = 'calls'
+    UNION ALL
+    SELECT c.seed_id, c.distance, ed.source_id, c.depth + 1
+    FROM edges ed
+    JOIN callers c ON ed.target_id = c.caller_id
+    WHERE ed.kind = 'calls' AND c.depth < 3
+)
+SELECT seed_id, distance, caller_id FROM callers;
+```
+
+#### CLI Tool (`archscout graph`)
+
+You can also generate and export graphs directly using `go tool archscout` (or the installed binary):
+
+```bash
+# Generate SQLite database with FTS5 for AI coding agents:
+go tool archscout graph --sqlite .archscout/codegraph.db .
+# or if installed globally:
+archscout graph --sqlite .archscout/codegraph.db .
+
+# Export Mermaid diagram to file:
+archscout graph --format mermaid --out diagram.mmd .
+
+# Export Graphviz DOT or JSON:
+archscout graph --format dot .
+archscout graph --format json --out graph.json .
+```
+
 ## Refs and Formatting
 
 Rule violations are returned as `Refs` — each `Ref` identifies a source location:
@@ -557,6 +828,11 @@ Available format options: `WithRefPackage()`, `WithRefKind()`, `WithoutRefFile()
 - `Module(path)` — helper for building fully-qualified package patterns
 - `BuildPackageGraph(c dependencies.Collection) *PackageGraph` — builds a transitive package graph from a dependency collection
 - `BuildImplementsGraph(ws *Workspace) *ImplementsGraph` — builds an interface-implementation graph from a `WithTypeInfo()` workspace
+- `BuildCodeGraph(ws *Workspace) *CodeGraph` — builds a unified multi-level code graph (modules, packages, files, types, functions)
+- `ws.CodeGraph() *CodeGraph` — returns the unified code graph for the workspace
+- `ws.ExportSQLite(ctx, dbPath, opts...)` — exports the codebase graph to a SQLite database with FTS5 and optional vector embeddings
+- `archscout.OpenSQLite(dbPath) (*SQLiteStore, error)` — opens an exported SQLite database for FTS, vector, and CTE queries
+- `WithEmbeddingFunc(fn, dimensions)` — sets the vector embedding generator for SQLite export
 - `Rule(name)` — entry point for all rule construction
 
 Rule types expose:
