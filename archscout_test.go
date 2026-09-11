@@ -70,3 +70,33 @@ func fixtureDir(t *testing.T, fixtureName string) string {
 
 	return filepath.Join(filepath.Dir(filename), "testdata", fixtureName)
 }
+
+func TestWorkspace_CodeGraph(t *testing.T) {
+	ws := internaltest.LoadFixtureWorkspace(t, "fixturemod")
+	graph := ws.CodeGraph()
+	require.NotNil(t, graph)
+
+	nodes := graph.Nodes()
+	assert.NotEmpty(t, nodes)
+
+	// Verify top-level alias types
+	var _ *archscout.CodeGraph = graph
+	assert.NotEmpty(t, graph.Edges(archscout.CodeEdgeKindContains))
+}
+
+func TestWorkspace_ExportSQLite(t *testing.T) {
+	ctx := context.Background()
+	ws := internaltest.LoadFixtureWorkspace(t, "fixturemod")
+
+	dbPath := filepath.Join(t.TempDir(), "export.db")
+	err := ws.ExportSQLite(ctx, dbPath)
+	require.NoError(t, err)
+
+	store, err := archscout.OpenSQLite(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	nodes, err := store.SearchFTS(ctx, "domain", 5)
+	require.NoError(t, err)
+	assert.NotEmpty(t, nodes)
+}
