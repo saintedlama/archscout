@@ -201,12 +201,12 @@ func runGraph(args []string, stdout, stderr io.Writer) error {
 }
 
 func runQuery(args []string, stdout, stderr io.Writer) error {
-	for i, a := range args {
-		if strings.ToLower(a) == "skill" {
-			remaining := append([]string{}, args[:i]...)
-			remaining = append(remaining, args[i+1:]...)
-			return runSkill(remaining, stdout, stderr)
-		}
+	// "skill" is a subcommand only in the mode position, so a search for the
+	// term itself ("archscout query fts skill") still runs as a query.
+	if i := firstPositional(args, map[string]bool{"db": true, "dir": true, "depth": true, "limit": true, "out": true}); i >= 0 && strings.ToLower(args[i]) == "skill" {
+		remaining := append([]string{}, args[:i]...)
+		remaining = append(remaining, args[i+1:]...)
+		return runSkill(remaining, stdout, stderr)
 	}
 
 	fs := flag.NewFlagSet("query", flag.ContinueOnError)
@@ -419,6 +419,22 @@ func runMCP(args []string, stdout, stderr io.Writer) error {
 
 	server := mcp.NewServer(store)
 	return server.Serve(ctx, os.Stdin, stdout)
+}
+
+// firstPositional returns the index of the first non-flag argument, skipping the
+// values of flags listed in valueFlags, or -1 if there is none.
+func firstPositional(args []string, valueFlags map[string]bool) int {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			return i
+		}
+		name := strings.TrimLeft(arg, "-")
+		if !strings.Contains(name, "=") && valueFlags[name] {
+			i++
+		}
+	}
+	return -1
 }
 
 func reorderFlagsFirst(args []string, valueFlags map[string]bool) []string {

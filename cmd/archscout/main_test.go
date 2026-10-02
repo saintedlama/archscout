@@ -145,7 +145,21 @@ func TestRun_QueryCommands(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, stdout.String(), "Dependencies of")
 
-	// 6. Skill query text
+	// 6. Searching for the term "skill" stays a query
+	stdout.Reset()
+	stderr.Reset()
+	err = run([]string{"query", "fts", "skill", "--db", dbPath}, &stdout, &stderr)
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), `No symbols matched "skill"`)
+
+	// 6b. Skill subcommand after a flag
+	stdout.Reset()
+	stderr.Reset()
+	err = run([]string{"query", "--json", "skill"}, &stdout, &stderr)
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), `"name": "archscout"`)
+
+	// 6c. Skill query text
 	stdout.Reset()
 	stderr.Reset()
 	err = run([]string{"query", "skill"}, &stdout, &stderr)
