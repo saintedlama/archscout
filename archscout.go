@@ -486,7 +486,7 @@ func parseWorkspace(ctx context.Context, dir string, withTypeInfo bool, report f
 		toolspackages.NeedCompiledGoFiles |
 		toolspackages.NeedImports
 	if withTypeInfo {
-		mode |= toolspackages.NeedTypes | toolspackages.NeedTypesInfo | toolspackages.NeedDeps
+		mode |= toolspackages.NeedTypes | toolspackages.NeedTypesInfo
 	}
 
 	cfg := &toolspackages.Config{
