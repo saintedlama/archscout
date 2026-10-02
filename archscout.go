@@ -8,12 +8,14 @@ import (
 	"go/printer"
 	"go/token"
 	gotypes "go/types"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/saintedlama/archscout/codegraph"
 	"github.com/saintedlama/archscout/common"
 	"github.com/saintedlama/archscout/dependencies"
 	"github.com/saintedlama/archscout/files"
@@ -26,6 +28,7 @@ import (
 	"github.com/saintedlama/archscout/variables"
 	workspacebuilder "github.com/saintedlama/archscout/workspace/builder"
 
+	"golang.org/x/mod/modfile"
 	toolspackages "golang.org/x/tools/go/packages"
 )
 
@@ -103,6 +106,97 @@ type PackageGraph = packagegraph.PackageGraph
 //	graph := archscout.BuildPackageGraph(ws.Dependencies.IsNotTest())
 func BuildPackageGraph(c dependencies.Collection) *PackageGraph {
 	return packagegraph.BuildGraph(c)
+}
+
+// CodeGraph is a unified multi-level directed graph of modules, packages, files, types, and functions.
+// See codegraph.Graph for the full API.
+type CodeGraph = codegraph.Graph
+type CodeNode = codegraph.Node
+type CodeEdge = codegraph.Edge
+type CodeNodeKind = codegraph.NodeKind
+type CodeEdgeKind = codegraph.EdgeKind
+type ExportOption = codegraph.ExportOption
+
+var (
+	ModuleNodeID   = codegraph.ModuleNodeID
+	PackageNodeID  = codegraph.PackageNodeID
+	FileNodeID     = codegraph.FileNodeID
+	TypeNodeID     = codegraph.TypeNodeID
+	FunctionNodeID = codegraph.FunctionNodeID
+
+	WithNodeKinds = codegraph.WithNodeKinds
+	WithEdgeKinds = codegraph.WithEdgeKinds
+	WithDirection = codegraph.WithDirection
+	WithTitle     = codegraph.WithTitle
+)
+
+const (
+	CodeNodeKindModule   = codegraph.NodeKindModule
+	CodeNodeKindPackage  = codegraph.NodeKindPackage
+	CodeNodeKindFile     = codegraph.NodeKindFile
+	CodeNodeKindType     = codegraph.NodeKindType
+	CodeNodeKindFunction = codegraph.NodeKindFunction
+
+	CodeEdgeKindContains       = codegraph.EdgeKindContains
+	CodeEdgeKindImports        = codegraph.EdgeKindImports
+	CodeEdgeKindDependsOn      = codegraph.EdgeKindDependsOn
+	CodeEdgeKindCalls          = codegraph.EdgeKindCalls
+	CodeEdgeKindImplements     = codegraph.EdgeKindImplements
+	CodeEdgeKindEmbeds         = codegraph.EdgeKindEmbeds
+	CodeEdgeKindReferencesType = codegraph.EdgeKindReferencesType
+)
+
+// BuildCodeGraph constructs a unified CodeGraph indexing modules, packages,
+// files, types, and function calls from the workspace.
+func BuildCodeGraph(ws *Workspace) *CodeGraph {
+	if ws == nil {
+		return codegraph.Build(codegraph.Input{})
+	}
+	return codegraph.Build(codegraph.Input{
+		ModuleRoot:    ws.ModuleRoot(),
+		Packages:      ws.Packages,
+		Files:         ws.Files,
+		Types:         ws.Types,
+		Functions:     ws.Functions,
+		FunctionCalls: ws.FunctionCalls,
+		Dependencies:  ws.Dependencies,
+		Implements:    BuildImplementsGraph(ws),
+		Modules:       workspaceModules(ws),
+	})
+}
+
+// workspaceModules returns the module path and required modules from the go.mod
+// that contains the workspace's files, or nil if none can be found.
+func workspaceModules(ws *Workspace) []string {
+	fileItems := ws.Files.All()
+	if len(fileItems) == 0 {
+		return nil
+	}
+	for dir := filepath.Dir(fileItems[0].Filename); ; dir = filepath.Dir(dir) {
+		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+		if err == nil {
+			f, err := modfile.ParseLax("go.mod", data, nil)
+			if err != nil {
+				return nil
+			}
+			var mods []string
+			if f.Module != nil {
+				mods = append(mods, f.Module.Mod.Path)
+			}
+			for _, r := range f.Require {
+				mods = append(mods, r.Mod.Path)
+			}
+			return mods
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			return nil
+		}
+	}
+}
+
+// CodeGraph returns the unified CodeGraph for this workspace.
+func (ws *Workspace) CodeGraph() *CodeGraph {
+	return BuildCodeGraph(ws)
 }
 
 // ImplementsGraph stores interface-implementation edges over the workspace's resolved go/types packages.
