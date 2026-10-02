@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/saintedlama/archscout"
 	"github.com/saintedlama/archscout/codegraph/mcp"
@@ -462,14 +464,34 @@ func ensureStore(ctx context.Context, dbPath, dir string, stderr io.Writer) (*sq
 	if dbPath == "" {
 		dbPath = ".archscout/codegraph.db"
 	}
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		targetDir := dir
-		if targetDir == "" {
-			targetDir = "."
-		}
-		goMod := filepath.Join(targetDir, "go.mod")
-		if _, err := os.Stat(goMod); err == nil {
-			fmt.Fprintf(stderr, "Database %s not found. Exporting codebase graph from %s...\n", dbPath, targetDir)
+	targetDir := dir
+	if targetDir == "" {
+		targetDir = "."
+	}
+
+	info, err := os.Stat(dbPath)
+	missing := os.IsNotExist(err)
+	if err != nil && !missing {
+		return nil, fmt.Errorf("checking database %s: %w", dbPath, err)
+	}
+
+	var reason string
+	if missing {
+		reason = fmt.Sprintf("Database %s not found", dbPath)
+	} else if newer, err := sourceNewerThan(targetDir, info.ModTime()); err != nil {
+		return nil, fmt.Errorf("checking sources in %s: %w", targetDir, err)
+	} else if newer != "" {
+		reason = fmt.Sprintf("Database %s is older than %s", dbPath, newer)
+	}
+
+	if reason != "" {
+		if !isGoProject(targetDir) {
+			if missing {
+				return nil, fmt.Errorf("database %s not found and no go.mod or go.work in %s", dbPath, targetDir)
+			}
+			fmt.Fprintf(stderr, "Warning: %s, but %s has no go.mod or go.work to rebuild from.\n", reason, targetDir)
+		} else {
+			fmt.Fprintf(stderr, "%s. Exporting codebase graph from %s...\n", reason, targetDir)
 			if dirPath := filepath.Dir(dbPath); dirPath != "" && dirPath != "." {
 				if err := os.MkdirAll(dirPath, 0755); err != nil {
 					return nil, fmt.Errorf("creating directory for db: %w", err)
@@ -483,12 +505,52 @@ func ensureStore(ctx context.Context, dbPath, dir string, stderr io.Writer) (*sq
 				return nil, fmt.Errorf("exporting sqlite: %w", err)
 			}
 			fmt.Fprintf(stderr, "Export complete.\n")
-		} else {
-			return nil, fmt.Errorf("database %s not found and no go.mod in %s", dbPath, targetDir)
 		}
 	}
 
 	return sqlite.Open(dbPath)
+}
+
+func isGoProject(dir string) bool {
+	for _, name := range []string{"go.mod", "go.work"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// sourceNewerThan returns the first Go source or module file under dir that was
+// modified after t, or "" if the database is up to date. Hidden directories
+// (including the default .archscout), vendor and testdata are skipped.
+func sourceNewerThan(dir string, t time.Time) (string, error) {
+	var newer string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if path != dir && (strings.HasPrefix(name, ".") || name == "vendor" || name == "testdata") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".go") && name != "go.mod" && name != "go.sum" && name != "go.work" {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.ModTime().After(t) {
+			newer = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return newer, err
 }
 
 func outputJSON(w io.Writer, v any) error {

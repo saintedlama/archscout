@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/saintedlama/archscout"
 	"github.com/saintedlama/archscout/codegraph/sqlite"
@@ -185,6 +187,30 @@ func TestRun_QueryCommands(t *testing.T) {
 	err = run([]string{"query", "skill", "--install", "--out", skillFile}, &stdout, &stderr)
 	require.NoError(t, err)
 	assert.FileExists(t, skillFile)
+}
+
+func TestRun_QueryRebuildsStaleDatabase(t *testing.T) {
+	dir := fixtureDir(t, "fixturemod")
+	dbPath := filepath.Join(t.TempDir(), "stale.db")
+	var stdout, stderr bytes.Buffer
+
+	require.NoError(t, run([]string{"query", "fts", "domain", "--db", dbPath, "--dir", dir}, &stdout, &stderr))
+	assert.Contains(t, stderr.String(), "not found")
+
+	// Up to date: no rebuild.
+	stdout.Reset()
+	stderr.Reset()
+	require.NoError(t, run([]string{"query", "fts", "domain", "--db", dbPath, "--dir", dir}, &stdout, &stderr))
+	assert.NotContains(t, stderr.String(), "Exporting")
+
+	// Sources newer than the database: rebuild.
+	old := time.Unix(0, 0)
+	require.NoError(t, os.Chtimes(dbPath, old, old))
+	stdout.Reset()
+	stderr.Reset()
+	require.NoError(t, run([]string{"query", "fts", "domain", "--db", dbPath, "--dir", dir}, &stdout, &stderr))
+	assert.Contains(t, stderr.String(), "is older than")
+	assert.Contains(t, stdout.String(), "Found")
 }
 
 func TestRun_SkillTopLevel(t *testing.T) {
