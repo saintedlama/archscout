@@ -79,6 +79,34 @@ func TestStore_SearchFTSQualifiedNames(t *testing.T) {
 	assert.Empty(t, nodes)
 }
 
+func TestStore_GetNodePrefersPackageForPackagePath(t *testing.T) {
+	ctx := context.Background()
+	ws, err := archscout.LoadWorkspace(ctx, fixtureDir(t, "fixturemod"))
+	require.NoError(t, err)
+
+	dbPath := filepath.Join(t.TempDir(), "getnode.db")
+	require.NoError(t, sqlite.Export(ctx, ws.CodeGraph(), dbPath))
+
+	store, err := sqlite.Open(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	node, err := store.GetNode(ctx, "example.com/fixturemod/domain")
+	require.NoError(t, err)
+	require.NotNil(t, node)
+	assert.Equal(t, codegraph.NodeKindPackage, node.Kind)
+	assert.Equal(t, "package:example.com/fixturemod/domain", node.ID)
+
+	node, err = store.GetNode(ctx, "package:example.com/fixturemod/domain")
+	require.NoError(t, err)
+	require.NotNil(t, node)
+	assert.Equal(t, "package:example.com/fixturemod/domain", node.ID)
+
+	node, err = store.GetNode(ctx, "does-not-exist")
+	require.NoError(t, err)
+	assert.Nil(t, node)
+}
+
 func TestExport_ReplacesExistingDatabase(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "reexport.db")

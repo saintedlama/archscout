@@ -504,18 +504,27 @@ func ftsMatchExpr(query string) string {
 	return strings.Join(parts, " ")
 }
 
-// GetNode retrieves a single node by its ID, qualified name, or package ID. Returns nil if not found.
+// GetNode retrieves a single node by its ID, qualified name, package path, or name.
+// Exact ID matches win, followed by IDs with a kind prefix, qualified names, the
+// package node for a package path, and finally bare names. Returns nil if not found.
 func (s *Store) GetNode(ctx context.Context, id string) (*codegraph.Node, error) {
 	query := `
 		SELECT id, kind, name, qname, package_id, parent_id, within_workspace,
 		       filename, line, col
 		FROM nodes
-		WHERE id = ? OR qname = ? OR package_id = ? OR name = ?
-		   OR id = 'package:' || ? OR id = 'function:' || ? OR id = 'type:' || ?
-		ORDER BY (id = ?) DESC, (qname = ?) DESC
+		WHERE id = ?1 OR qname = ?1 OR package_id = ?1 OR name = ?1
+		   OR id IN ('module:' || ?1, 'package:' || ?1, 'file:' || ?1, 'type:' || ?1, 'function:' || ?1)
+		ORDER BY CASE
+			WHEN id = ?1 THEN 0
+			WHEN id IN ('module:' || ?1, 'package:' || ?1, 'file:' || ?1, 'type:' || ?1, 'function:' || ?1) THEN 1
+			WHEN qname = ?1 THEN 2
+			WHEN kind = 'package' AND package_id = ?1 THEN 3
+			WHEN name = ?1 THEN 4
+			ELSE 5
+		END, id
 		LIMIT 1;
 	`
-	row := s.db.QueryRowContext(ctx, query, id, id, id, id, id, id, id, id, id)
+	row := s.db.QueryRowContext(ctx, query, id)
 	var n codegraph.Node
 	var kindStr string
 	var within int
