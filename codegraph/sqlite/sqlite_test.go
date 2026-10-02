@@ -51,6 +51,34 @@ func TestExport_FTSAndEdges(t *testing.T) {
 	assert.True(t, foundDomain, "expected domain package in FTS results")
 }
 
+func TestStore_SearchFTSQualifiedNames(t *testing.T) {
+	ctx := context.Background()
+	ws, err := archscout.LoadWorkspace(ctx, fixtureDir(t, "fixturemod"))
+	require.NoError(t, err)
+
+	dbPath := filepath.Join(t.TempDir(), "fts.db")
+	require.NoError(t, sqlite.Export(ctx, ws.CodeGraph(), dbPath))
+
+	store, err := sqlite.Open(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	for _, query := range []string{
+		"example.com/fixturemod/domain",
+		"fixturemod/domain",
+		`dom*`,
+		`"domain`,
+	} {
+		nodes, err := store.SearchFTS(ctx, query, 10)
+		require.NoError(t, err, "query %q", query)
+		assert.NotEmpty(t, nodes, "query %q", query)
+	}
+
+	nodes, err := store.SearchFTS(ctx, "  ", 10)
+	require.NoError(t, err)
+	assert.Empty(t, nodes)
+}
+
 func TestExport_ReplacesExistingDatabase(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "reexport.db")

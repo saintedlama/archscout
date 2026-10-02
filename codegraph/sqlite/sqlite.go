@@ -433,16 +433,25 @@ func (s *Store) SearchVector(ctx context.Context, vector []float32, limit int) (
 }
 
 // SearchFTS performs a full-text search across node names, qnames, and package IDs.
+//
+// Each whitespace-separated term is matched literally, so qualified names such as
+// "pkg.Service.Run" or "github.com/org/repo" can be passed as-is. A trailing "*"
+// turns a term into a prefix search. Results are ordered by relevance.
 func (s *Store) SearchFTS(ctx context.Context, query string, limit int) ([]codegraph.Node, error) {
+	match := ftsMatchExpr(query)
+	if match == "" {
+		return nil, nil
+	}
 	sqlQuery := `
 		SELECT n.id, n.kind, n.name, n.qname, n.package_id, n.parent_id, n.within_workspace,
 		       n.filename, n.line, n.col
 		FROM nodes_fts f
 		JOIN nodes n ON n.rowid = f.rowid
 		WHERE nodes_fts MATCH ?
+		ORDER BY f.rank
 		LIMIT ?;
 	`
-	rows, err := s.db.QueryContext(ctx, sqlQuery, query, limit)
+	rows, err := s.db.QueryContext(ctx, sqlQuery, match, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -472,6 +481,27 @@ func (s *Store) SearchFTS(ctx context.Context, query string, limit int) ([]codeg
 		result = append(result, n)
 	}
 	return result, nil
+}
+
+// ftsMatchExpr turns free-form user input into an FTS5 MATCH expression by quoting
+// every term, which keeps characters like '.', '/' and '-' from being parsed as
+// FTS5 syntax.
+func ftsMatchExpr(query string) string {
+	terms := strings.Fields(query)
+	parts := make([]string, 0, len(terms))
+	for _, term := range terms {
+		prefix := strings.HasSuffix(term, "*")
+		term = strings.TrimRight(term, "*")
+		if term == "" {
+			continue
+		}
+		quoted := `"` + strings.ReplaceAll(term, `"`, `""`) + `"`
+		if prefix {
+			quoted += "*"
+		}
+		parts = append(parts, quoted)
+	}
+	return strings.Join(parts, " ")
 }
 
 // GetNode retrieves a single node by its ID, qualified name, or package ID. Returns nil if not found.
