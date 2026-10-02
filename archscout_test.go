@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/saintedlama/archscout"
+	"github.com/saintedlama/archscout/codegraph/sqlite"
 	"github.com/saintedlama/archscout/internaltest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,10 +90,10 @@ func TestWorkspace_ExportSQLite(t *testing.T) {
 	ws := internaltest.LoadFixtureWorkspace(t, "fixturemod")
 
 	dbPath := filepath.Join(t.TempDir(), "export.db")
-	err := ws.ExportSQLite(ctx, dbPath)
+	err := sqlite.Export(ctx, ws.CodeGraph(), dbPath)
 	require.NoError(t, err)
 
-	store, err := archscout.OpenSQLite(dbPath)
+	store, err := sqlite.Open(dbPath)
 	require.NoError(t, err)
 	defer store.Close()
 

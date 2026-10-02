@@ -15,7 +15,6 @@ import (
 	"sync"
 
 	"github.com/saintedlama/archscout/codegraph"
-	"github.com/saintedlama/archscout/codegraph/sqlite"
 	"github.com/saintedlama/archscout/common"
 	"github.com/saintedlama/archscout/dependencies"
 	"github.com/saintedlama/archscout/files"
@@ -116,15 +115,6 @@ type CodeNodeKind = codegraph.NodeKind
 type CodeEdgeKind = codegraph.EdgeKind
 type ExportOption = codegraph.ExportOption
 
-// SQLite and vector database types and helpers.
-type (
-	SQLiteStore     = sqlite.Store
-	SQLiteOption    = sqlite.Option
-	VectorMatch     = sqlite.VectorMatch
-	HybridExpansion = sqlite.HybridExpansion
-	EmbeddingFunc   = sqlite.EmbeddingFunc
-)
-
 var (
 	ModuleNodeID   = codegraph.ModuleNodeID
 	PackageNodeID  = codegraph.PackageNodeID
@@ -136,9 +126,6 @@ var (
 	WithEdgeKinds = codegraph.WithEdgeKinds
 	WithDirection = codegraph.WithDirection
 	WithTitle     = codegraph.WithTitle
-
-	WithEmbeddingFunc = sqlite.WithEmbeddingFunc
-	OpenSQLite        = sqlite.Open
 )
 
 const (
@@ -178,19 +165,6 @@ func BuildCodeGraph(ws *Workspace) *CodeGraph {
 // CodeGraph returns the unified CodeGraph for this workspace.
 func (ws *Workspace) CodeGraph() *CodeGraph {
 	return BuildCodeGraph(ws)
-}
-
-// ExportSQLite exports the workspace's CodeGraph to a SQLite database with FTS5 and optional vector embeddings.
-func ExportSQLite(ctx context.Context, ws *Workspace, dbPath string, opts ...SQLiteOption) error {
-	if ws == nil {
-		return fmt.Errorf("workspace is nil")
-	}
-	return sqlite.Export(ctx, ws.CodeGraph(), dbPath, opts...)
-}
-
-// ExportSQLite exports the workspace's CodeGraph to a SQLite database with FTS5 and optional vector embeddings.
-func (ws *Workspace) ExportSQLite(ctx context.Context, dbPath string, opts ...SQLiteOption) error {
-	return ExportSQLite(ctx, ws, dbPath, opts...)
 }
 
 // ImplementsGraph stores interface-implementation edges over the workspace's resolved go/types packages.

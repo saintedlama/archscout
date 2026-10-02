@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/saintedlama/archscout"
+	"github.com/saintedlama/archscout/codegraph/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +69,7 @@ func TestRun_GraphSQLite(t *testing.T) {
 	assert.Contains(t, stderr.String(), "Exported SQLite database")
 
 	// Verify database can be opened and queried with ArchScout SQLiteStore
-	store, err := archscout.OpenSQLite(dbPath)
+	store, err := sqlite.Open(dbPath)
 	require.NoError(t, err)
 	defer store.Close()
 

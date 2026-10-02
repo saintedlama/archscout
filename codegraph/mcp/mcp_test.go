@@ -24,7 +24,7 @@ func prepareTestStore(t *testing.T) *sqlite.Store {
 	require.NoError(t, err)
 
 	dbPath := filepath.Join(t.TempDir(), "mcp_test.db")
-	err = ws.ExportSQLite(t.Context(), dbPath)
+	err = sqlite.Export(t.Context(), ws.CodeGraph(), dbPath)
 	require.NoError(t, err)
 
 	store, err := sqlite.Open(dbPath)

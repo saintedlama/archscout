@@ -722,17 +722,17 @@ AI coding agents (e.g. Claude Code, Cursor, Windsurf, Devin) consume codebases b
 import (
     "context"
 
-    "github.com/saintedlama/archscout"
+    "github.com/saintedlama/archscout/codegraph/sqlite"
 )
 
 // 1. Export workspace graph to SQLite (with FTS5 & optional vector embeddings)
 ctx := context.Background()
-err := ws.ExportSQLite(ctx, ".archscout/codegraph.db",
-    archscout.WithEmbeddingFunc(myEmbedder, 1536), // Optional: compute vector embeddings
+err := sqlite.Export(ctx, ws.CodeGraph(), ".archscout/codegraph.db",
+    sqlite.WithEmbeddingFunc(myEmbedder, 1536), // Optional: compute vector embeddings
 )
 
-// 2. Query in Go using the built-in SQLiteStore:
-store, err := archscout.OpenSQLite(".archscout/codegraph.db")
+// 2. Query in Go using the built-in sqlite.Store:
+store, err := sqlite.Open(".archscout/codegraph.db")
 defer store.Close()
 
 // Full-text search across symbols, packages, and signatures:
@@ -830,9 +830,6 @@ Available format options: `WithRefPackage()`, `WithRefKind()`, `WithoutRefFile()
 - `BuildImplementsGraph(ws *Workspace) *ImplementsGraph` — builds an interface-implementation graph from a `WithTypeInfo()` workspace
 - `BuildCodeGraph(ws *Workspace) *CodeGraph` — builds a unified multi-level code graph (modules, packages, files, types, functions)
 - `ws.CodeGraph() *CodeGraph` — returns the unified code graph for the workspace
-- `ws.ExportSQLite(ctx, dbPath, opts...)` — exports the codebase graph to a SQLite database with FTS5 and optional vector embeddings
-- `archscout.OpenSQLite(dbPath) (*SQLiteStore, error)` — opens an exported SQLite database for FTS, vector, and CTE queries
-- `WithEmbeddingFunc(fn, dimensions)` — sets the vector embedding generator for SQLite export
 - `Rule(name)` — entry point for all rule construction
 
 Rule types expose:

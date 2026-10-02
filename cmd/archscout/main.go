@@ -13,6 +13,7 @@ import (
 
 	"github.com/saintedlama/archscout"
 	"github.com/saintedlama/archscout/codegraph/mcp"
+	"github.com/saintedlama/archscout/codegraph/sqlite"
 )
 
 func main() {
@@ -124,7 +125,7 @@ func runGraph(args []string, stdout, stderr io.Writer) error {
 				return fmt.Errorf("creating directory for sqlite db: %w", err)
 			}
 		}
-		if err := ws.ExportSQLite(ctx, *sqlitePath); err != nil {
+		if err := sqlite.Export(ctx, graph, *sqlitePath); err != nil {
 			return fmt.Errorf("exporting sqlite database: %w", err)
 		}
 		fmt.Fprintf(stderr, "Exported SQLite database to %s (%d nodes, %d edges)\n", *sqlitePath, len(graph.Nodes()), len(graph.Edges()))
@@ -441,7 +442,7 @@ func reorderFlagsFirst(args []string, valueFlags map[string]bool) []string {
 	return append(flags, posArgs...)
 }
 
-func ensureStore(ctx context.Context, dbPath, dir string, stderr io.Writer) (*archscout.SQLiteStore, error) {
+func ensureStore(ctx context.Context, dbPath, dir string, stderr io.Writer) (*sqlite.Store, error) {
 	if dbPath == "" {
 		dbPath = ".archscout/codegraph.db"
 	}
@@ -462,7 +463,7 @@ func ensureStore(ctx context.Context, dbPath, dir string, stderr io.Writer) (*ar
 			if err != nil {
 				return nil, fmt.Errorf("loading workspace: %w", err)
 			}
-			if err := ws.ExportSQLite(ctx, dbPath); err != nil {
+			if err := sqlite.Export(ctx, ws.CodeGraph(), dbPath); err != nil {
 				return nil, fmt.Errorf("exporting sqlite: %w", err)
 			}
 			fmt.Fprintf(stderr, "Export complete.\n")
@@ -471,7 +472,7 @@ func ensureStore(ctx context.Context, dbPath, dir string, stderr io.Writer) (*ar
 		}
 	}
 
-	return archscout.OpenSQLite(dbPath)
+	return sqlite.Open(dbPath)
 }
 
 func outputJSON(w io.Writer, v any) error {
