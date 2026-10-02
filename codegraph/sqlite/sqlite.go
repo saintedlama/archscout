@@ -103,7 +103,15 @@ func Export(ctx context.Context, g *codegraph.Graph, dbPath string, opts ...Opti
 }
 
 func initSchema(db *sql.DB, vectorDim int) error {
+	// Every export rebuilds the database from scratch so nodes and edges of
+	// deleted code don't linger, and the external-content FTS index never
+	// points at rowids that INSERT OR REPLACE has since reassigned.
 	schema := `
+	DROP TABLE IF EXISTS nodes_fts;
+	DROP TABLE IF EXISTS node_embeddings;
+	DROP TABLE IF EXISTS edges;
+	DROP TABLE IF EXISTS nodes;
+
 	CREATE TABLE IF NOT EXISTS nodes (
 		rowid INTEGER PRIMARY KEY AUTOINCREMENT,
 		id TEXT UNIQUE NOT NULL,

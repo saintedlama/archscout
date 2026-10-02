@@ -51,6 +51,33 @@ func TestExport_FTSAndEdges(t *testing.T) {
 	assert.True(t, foundDomain, "expected domain package in FTS results")
 }
 
+func TestExport_ReplacesExistingDatabase(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "reexport.db")
+
+	first, err := archscout.LoadWorkspace(ctx, fixtureDir(t, "fixturemod"))
+	require.NoError(t, err)
+	require.NoError(t, sqlite.Export(ctx, first.CodeGraph(), dbPath))
+
+	second, err := archscout.LoadWorkspace(ctx, fixtureDir(t, "typeinfofixture"), archscout.WithTypeInfo())
+	require.NoError(t, err)
+	require.NoError(t, sqlite.Export(ctx, second.CodeGraph(), dbPath))
+
+	store, err := sqlite.Open(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	var stale int
+	require.NoError(t, store.DB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM nodes WHERE package_id LIKE 'example.com/fixturemod%'`).Scan(&stale))
+	assert.Zero(t, stale, "nodes from the previous export must be removed")
+
+	var staleFTS int
+	require.NoError(t, store.DB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM nodes_fts WHERE nodes_fts MATCH 'fixturemod'`).Scan(&staleFTS))
+	assert.Zero(t, staleFTS, "fts index entries from the previous export must be removed")
+}
+
 func TestExport_SqliteVecKNN(t *testing.T) {
 	ctx := context.Background()
 	ws, err := archscout.LoadWorkspace(ctx, fixtureDir(t, "typeinfofixture"), archscout.WithTypeInfo())
