@@ -24,11 +24,16 @@ type Input struct {
 	FunctionCalls functioncalls.Collection
 	Dependencies  dependencies.Collection
 	Implements    *implementsgraph.Graph
+	// Modules lists known module paths (e.g. the go.mod require list). External
+	// packages are attributed to the longest matching module path; packages that
+	// match none fall back to a heuristic, see ExternalModuleOf.
+	Modules []string
 }
 
 // Build constructs a fully-indexed CodeGraph from the provided collections.
 func Build(in Input) *Graph {
 	g := newGraph()
+	g.modules = sortModulesLongestFirst(in.Modules)
 	seenEdges := make(map[string]struct{})
 
 	addEdge := func(src, dst string, kind EdgeKind, ref common.Ref) {

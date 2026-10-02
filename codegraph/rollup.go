@@ -50,11 +50,11 @@ func (g *Graph) Ancestor(nodeID string, targetKind NodeKind) (Node, bool) {
 
 	// If target is Module and node is external
 	if targetKind == NodeKindModule && !start.WithinWorkspace && start.PackageID != "" {
-		extModID := ModuleNodeID(externalModuleOf(start.PackageID))
+		mod := g.moduleOf(start.PackageID)
+		extModID := ModuleNodeID(mod)
 		if extMod, exists := g.nodes[extModID]; exists {
 			return extMod, true
 		}
-		mod := externalModuleOf(start.PackageID)
 		return Node{ID: extModID, Kind: NodeKindModule, Name: mod, WithinWorkspace: false}, true
 	}
 
@@ -300,18 +300,73 @@ func (g *Graph) Cycles(edgeKinds ...EdgeKind) [][]string {
 	return cycles
 }
 
-// ExternalModuleOf derives the external module identifier or "std" for standard library packages.
+// ExternalModuleOf derives the module path of an external package, or "std" for
+// standard library packages, from the import path alone. It knows the layout of
+// common hosts (github.com, golang.org/x, gopkg.in, ...) and major version
+// suffixes; for other domains it assumes a two-segment module path. Graphs built
+// with Input.Modules use the actual module list first.
 func ExternalModuleOf(pkgID string) string {
 	return externalModuleOf(pkgID)
 }
 
+// moduleOf returns the longest known module path that contains pkgID, falling
+// back to ExternalModuleOf.
+func (g *Graph) moduleOf(pkgID string) string {
+	for _, mod := range g.modules {
+		if pkgID == mod || strings.HasPrefix(pkgID, mod+"/") {
+			return mod
+		}
+	}
+	return externalModuleOf(pkgID)
+}
+
 func externalModuleOf(pkgID string) string {
-	if !strings.Contains(pkgID, ".") {
+	parts := strings.Split(pkgID, "/")
+	if !strings.Contains(parts[0], ".") {
 		return "std"
 	}
-	parts := strings.Split(pkgID, "/")
-	if len(parts) >= 3 {
-		return strings.Join(parts[:3], "/")
+
+	n := 2 // vanity domains: go.uber.org/zap, k8s.io/client-go, google.golang.org/grpc
+	switch parts[0] {
+	case "github.com", "gitlab.com", "bitbucket.org", "golang.org", "codeberg.org":
+		n = 3
+	case "gopkg.in":
+		n = 2
 	}
-	return pkgID
+	if n > len(parts) {
+		return pkgID
+	}
+	// Major version suffix: github.com/org/repo/v2, go.uber.org/zap/v2.
+	if n < len(parts) && isMajorVersion(parts[n]) {
+		n++
+	}
+	return strings.Join(parts[:n], "/")
+}
+
+func isMajorVersion(segment string) bool {
+	if len(segment) < 2 || segment[0] != 'v' {
+		return false
+	}
+	for _, r := range segment[1:] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func sortModulesLongestFirst(modules []string) []string {
+	out := make([]string, 0, len(modules))
+	for _, m := range modules {
+		if m != "" {
+			out = append(out, m)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if len(out[i]) != len(out[j]) {
+			return len(out[i]) > len(out[j])
+		}
+		return out[i] < out[j]
+	})
+	return out
 }

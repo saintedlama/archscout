@@ -5,6 +5,9 @@ import (
 
 	"github.com/saintedlama/archscout"
 	"github.com/saintedlama/archscout/codegraph"
+	"github.com/saintedlama/archscout/common"
+	"github.com/saintedlama/archscout/functioncalls"
+	"github.com/saintedlama/archscout/functions"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -143,4 +146,42 @@ func TestRollup_Cycles(t *testing.T) {
 	// fixturemod imports should be acyclic
 	cycles := graph.Cycles(codegraph.EdgeKindImports)
 	assert.Empty(t, cycles, "expected no import cycles in fixturemod")
+}
+
+func TestExternalModuleOf(t *testing.T) {
+	cases := map[string]string{
+		"fmt":                                "std",
+		"net/http":                           "std",
+		"github.com/stretchr/testify/assert": "github.com/stretchr/testify",
+		"github.com/org/repo/v2/sub":         "github.com/org/repo/v2",
+		"golang.org/x/tools/go/packages":     "golang.org/x/tools",
+		"go.uber.org/zap/zapcore":            "go.uber.org/zap",
+		"go.uber.org/zap/v2/zapcore":         "go.uber.org/zap/v2",
+		"k8s.io/client-go/kubernetes":        "k8s.io/client-go",
+		"google.golang.org/grpc/codes":       "google.golang.org/grpc",
+		"gopkg.in/yaml.v3":                   "gopkg.in/yaml.v3",
+		"modernc.org/sqlite":                 "modernc.org/sqlite",
+		"github.com/org":                     "github.com/org",
+	}
+	for pkg, want := range cases {
+		assert.Equal(t, want, codegraph.ExternalModuleOf(pkg), pkg)
+	}
+}
+
+func TestAncestor_UsesKnownModules(t *testing.T) {
+	ref := common.Ref{PackageID: "example.com/m", Filename: "/m/main.go"}
+	graph := codegraph.Build(codegraph.Input{
+		ModuleRoot: "example.com/m",
+		Functions: functions.NewCollection([]functions.Item{
+			{Ref: ref, Name: "main", QName: "example.com/m.main"},
+		}),
+		FunctionCalls: functioncalls.NewCollection([]functioncalls.Item{
+			{Ref: ref, CallerQName: "example.com/m.main", CalleeQName: "cloud.google.com/go/storage/internal.X", CalleePackage: "cloud.google.com/go/storage/internal"},
+		}),
+		Modules: []string{"example.com/m", "cloud.google.com/go", "cloud.google.com/go/storage"},
+	})
+
+	mod, ok := graph.Ancestor(codegraph.FunctionNodeID("cloud.google.com/go/storage/internal.X"), codegraph.NodeKindModule)
+	require.True(t, ok)
+	assert.Equal(t, codegraph.ModuleNodeID("cloud.google.com/go/storage"), mod.ID)
 }

@@ -8,6 +8,7 @@ import (
 	"go/printer"
 	"go/token"
 	gotypes "go/types"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -27,6 +28,7 @@ import (
 	"github.com/saintedlama/archscout/variables"
 	workspacebuilder "github.com/saintedlama/archscout/workspace/builder"
 
+	"golang.org/x/mod/modfile"
 	toolspackages "golang.org/x/tools/go/packages"
 )
 
@@ -159,7 +161,37 @@ func BuildCodeGraph(ws *Workspace) *CodeGraph {
 		FunctionCalls: ws.FunctionCalls,
 		Dependencies:  ws.Dependencies,
 		Implements:    BuildImplementsGraph(ws),
+		Modules:       workspaceModules(ws),
 	})
+}
+
+// workspaceModules returns the module path and required modules from the go.mod
+// that contains the workspace's files, or nil if none can be found.
+func workspaceModules(ws *Workspace) []string {
+	fileItems := ws.Files.All()
+	if len(fileItems) == 0 {
+		return nil
+	}
+	for dir := filepath.Dir(fileItems[0].Filename); ; dir = filepath.Dir(dir) {
+		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+		if err == nil {
+			f, err := modfile.ParseLax("go.mod", data, nil)
+			if err != nil {
+				return nil
+			}
+			var mods []string
+			if f.Module != nil {
+				mods = append(mods, f.Module.Mod.Path)
+			}
+			for _, r := range f.Require {
+				mods = append(mods, r.Mod.Path)
+			}
+			return mods
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			return nil
+		}
+	}
 }
 
 // CodeGraph returns the unified CodeGraph for this workspace.

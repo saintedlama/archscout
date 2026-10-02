@@ -65,6 +65,7 @@ type Graph struct {
 	outEdges    map[string][]Edge
 	inEdges     map[string][]Edge
 	nodesByKind map[NodeKind][]string
+	modules     []string // known module paths, longest first, for mapping packages to modules
 }
 
 // NodeID builds a canonical prefixed node ID.
@@ -350,6 +351,7 @@ func (g *Graph) InPackage(patterns ...string) *Graph {
 	}
 
 	sub := newGraph()
+	sub.modules = g.modules
 	for _, n := range g.nodes {
 		if common.PackageMatchesAny(n.PackageID, patterns...) {
 			sub.addNode(n)
