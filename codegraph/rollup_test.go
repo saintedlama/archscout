@@ -133,7 +133,7 @@ func TestRollup_Paths(t *testing.T) {
 	domainPkgID := codegraph.PackageNodeID("example.com/fixturemod/domain")
 
 	// main -> application -> domain
-	paths := graph.Paths(mainPkgID, domainPkgID, 5, codegraph.EdgeKindImports)
+	paths := graph.Paths(mainPkgID, domainPkgID, 5, 0, codegraph.EdgeKindImports)
 	require.NotEmpty(t, paths)
 	assert.Equal(t, mainPkgID, paths[0][0])
 	assert.Equal(t, domainPkgID, paths[0][len(paths[0])-1])
@@ -184,4 +184,26 @@ func TestAncestor_UsesKnownModules(t *testing.T) {
 	mod, ok := graph.Ancestor(codegraph.FunctionNodeID("cloud.google.com/go/storage/internal.X"), codegraph.NodeKindModule)
 	require.True(t, ok)
 	assert.Equal(t, codegraph.ModuleNodeID("cloud.google.com/go/storage"), mod.ID)
+}
+
+func TestPaths_StopsAtMaxPaths(t *testing.T) {
+	// a -> {b1..b5} -> c gives five simple paths from a to c.
+	ref := common.Ref{PackageID: "example.com/m", Filename: "/m/main.go"}
+	items := []functions.Item{{Ref: ref, Name: "a", QName: "example.com/m.a"}, {Ref: ref, Name: "c", QName: "example.com/m.c"}}
+	var calls []functioncalls.Item
+	for _, b := range []string{"b1", "b2", "b3", "b4", "b5"} {
+		items = append(items, functions.Item{Ref: ref, Name: b, QName: "example.com/m." + b})
+		calls = append(calls,
+			functioncalls.Item{Ref: ref, CallerQName: "example.com/m.a", CalleeQName: "example.com/m." + b},
+			functioncalls.Item{Ref: ref, CallerQName: "example.com/m." + b, CalleeQName: "example.com/m.c"},
+		)
+	}
+	graph := codegraph.Build(codegraph.Input{
+		Functions:     functions.NewCollection(items),
+		FunctionCalls: functioncalls.NewCollection(calls),
+	})
+
+	a, c := codegraph.FunctionNodeID("example.com/m.a"), codegraph.FunctionNodeID("example.com/m.c")
+	assert.Len(t, graph.Paths(a, c, 0, 0, codegraph.EdgeKindCalls), 5)
+	assert.Len(t, graph.Paths(a, c, 0, 2, codegraph.EdgeKindCalls), 2)
 }

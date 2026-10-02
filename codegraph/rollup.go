@@ -202,14 +202,20 @@ func (g *Graph) DependentsOf(nodeID string, sourceKind NodeKind, edgeKinds ...Ed
 	return result
 }
 
-// Paths returns all simple paths from sourceID to targetID along edges of edgeKinds,
-// up to maxDepth hops. If maxDepth <= 0, a default of 10 hops is enforced.
-func (g *Graph) Paths(sourceID, targetID string, maxDepth int, edgeKinds ...EdgeKind) [][]string {
+// Paths returns simple paths from sourceID to targetID along edges of edgeKinds,
+// up to maxDepth hops, stopping once maxPaths paths have been found. The number of
+// simple paths grows exponentially on dense graphs, so the limit always applies:
+// if maxDepth <= 0 a default of 10 hops is used, and if maxPaths <= 0 a default
+// of 100 paths is used.
+func (g *Graph) Paths(sourceID, targetID string, maxDepth, maxPaths int, edgeKinds ...EdgeKind) [][]string {
 	if g == nil || !g.HasNode(sourceID) || !g.HasNode(targetID) {
 		return nil
 	}
 	if maxDepth <= 0 {
 		maxDepth = 10
+	}
+	if maxPaths <= 0 {
+		maxPaths = 100
 	}
 
 	var paths [][]string
@@ -217,7 +223,7 @@ func (g *Graph) Paths(sourceID, targetID string, maxDepth int, edgeKinds ...Edge
 
 	var dfs func(curr string, path []string, depth int)
 	dfs = func(curr string, path []string, depth int) {
-		if depth > maxDepth {
+		if depth > maxDepth || len(paths) >= maxPaths {
 			return
 		}
 		if curr == targetID {

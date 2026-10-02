@@ -683,6 +683,7 @@ paths := graph.Paths(
     archscout.PackageNodeID("example.com/app/cmd"),
     archscout.PackageNodeID("example.com/app/db"),
     5, // max depth
+    0, // max paths (0 = default of 100)
 )
 
 // 4. Export diagrams:
@@ -710,7 +711,7 @@ jsonBytes, _ := graph.ToJSON()
 | `DependentsOf(nodeID, sourceKind, kinds...)`         | Source-kind nodes depending on `nodeID` or its contained children                      |
 | `Rollup(targetKind, kinds...)`                       | Condenses lower-level edges to the specified architectural tier (`Package`, `Module`) |
 | `InPackage(patterns...)`                             | Returns a filtered subgraph scoped to packages matching glob patterns                |
-| `Paths(srcID, dstID, maxDepth, kinds...)`            | Returns all simple directed paths between two nodes                                   |
+| `Paths(srcID, dstID, maxDepth, maxPaths, kinds...)`  | Returns simple directed paths between two nodes, up to maxPaths (default 100)         |
 | `Cycles(kinds...)`                                   | Detects directed cycles across designated edge kinds                                  |
 | `ToMermaid(opts...)` / `ToDOT(opts...)` / `ToJSON()` | Exports the graph to Mermaid markdown, Graphviz DOT, or JSON                          |
 
