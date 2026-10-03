@@ -1,10 +1,10 @@
 module github.com/saintedlama/archscout
 
-go 1.26.0
+go 1.27.1
 
 require (
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/tools v0.50.0
+	golang.org/x/tools v0.51.0
 )
 
 require (
