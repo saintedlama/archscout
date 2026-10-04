@@ -1,24 +1,18 @@
-name: release-please
+name: Release
 
 on:
   push:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
+    branches: [main]
 
 permissions:
   contents: write
   pull-requests: write
-  issues: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - name: Release Please
-        id: release
-        uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release-type: go
