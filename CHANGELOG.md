@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/saintedlama/archscout/compare/v1.6.0...v1.7.0) (2026-10-20)
+
+
+### Features
+
+* add SQLite vector export, CLI query, agent skill, and MCP server ([#11](https://github.com/saintedlama/archscout/issues/11)) ([bc1d854](https://github.com/saintedlama/archscout/commit/bc1d85437d3a82f86838f393488fdb567cee1ecd))
+
 ## [1.6.0](https://github.com/saintedlama/archscout/compare/v1.5.1...v1.6.0) (2026-04-29)
 
 
